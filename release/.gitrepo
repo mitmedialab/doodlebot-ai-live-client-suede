@@ -6,7 +6,7 @@
 [subrepo]
 	remote = https://github.com/mitmedialab/doodlebot-ai-live-client-suede
 	branch = release
-	commit = 6c67b97172d69bb689b165ab17f1c0c3f26e569f
-	parent = c271b6a23914930d54b1400163344ee114b56750
+	commit = afa93340e0181532fc67ceb0b76aa6968ae2d307
+	parent = 5b3733343f356032cfc4d5c1841b7f2b56e16401
 	method = merge
 	cmdver = 0.4.9
