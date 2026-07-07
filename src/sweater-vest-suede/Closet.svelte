@@ -148,13 +148,13 @@
   });
 </script>
 
-<h1>Tests</h1>
-
 {#if component}
   {#await component then Component}
     <Component />
   {/await}
 {:else}
+  <h1>Tests</h1>
+
   {#snippet renderTree(node: Tree)}
     <ul>
       {#each sortedEntries(node) as [name, value]}
