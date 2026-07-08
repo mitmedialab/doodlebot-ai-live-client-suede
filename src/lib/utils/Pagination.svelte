@@ -23,6 +23,8 @@
     empty: Snippet<[]>;
     /** How many dots to show at once before windowing kicks in. */
     maxDots?: number;
+    "--active-dot"?: string;
+    "--inactive-dot"?: string;
   };
 </script>
 
@@ -244,9 +246,10 @@
               aria-label={`Go to page ${i + 1}`}
               aria-current={active}
               onclick={() => jumpTo(i)}
+              class:active
               class:bg-gray-800={active}
               class:bg-gray-400={!active}
-              class="h-2 w-2 shrink-0 rounded-full transition-[transform,background-color] duration-200"
+              class="dot h-2 w-2 shrink-0 rounded-full transition-[transform,background-color] duration-200"
               style:transform={`scale(${active ? 1 : dotScale(i)})`}
             ></button>
           {/each}
@@ -266,3 +269,13 @@
     {@render empty()}
   {/if}
 </div>
+
+<style>
+  .dot {
+    /* background-color: var(--inactive-dot); */
+  }
+
+  .dot.active {
+    background-color: var(--active-dot) !important;
+  }
+</style>

@@ -51,7 +51,7 @@
     {#if pocket.model}
       <div class="flex flex-col">
         <div class="flex-grow">
-          <Pagination model={pocket.model} {empty} />
+          <Pagination model={pocket.model} {empty} --active-dot="green" />
         </div>
         <div>
           <button onclick={() => pocket.model?.items.splice(0, 0, { x: -5 })}>
