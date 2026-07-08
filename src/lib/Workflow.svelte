@@ -1,20 +1,51 @@
 <script lang="ts" module>
-  /** Visual state of a section: animated blue while working, solid green/red
-   *  once it resolves. */
-  export type WorkflowStatus = "processing" | "success" | "error";
+  /** Visual state of a section: neutral while idle, animated blue while
+   *  working, solid green/red once it resolves. */
+  export type WorkflowStatus = "idle" | "processing" | "success" | "error";
 
-  export type WorkflowSection = {
+  export type WorkflowSectionInit = {
     /** Short label shown on the side of the section. */
     label: string;
+    /** This section's state, which drives the ring/arrow color + animation. */
+    status?: WorkflowStatus;
+    /** Identity color (pastel) for the section. Defaults by position. */
+    color?: string;
     /** Image src shown in the middle of the section. */
     image?: string;
     /** Alt text for the image. */
     alt?: string;
-    /** This section's state, which drives the ring/arrow color + animation. */
-    status: WorkflowStatus;
-    /** Identity color (pastel) for the section. Defaults by position. */
-    color?: string;
+    /** Single line shown centered on this section's outgoing arrow. */
+    text?: string;
+    /** Text shown inside this section's frame (instead of an image). */
+    frameText?: string;
+    /** Render this section's outgoing arrow as severed (process ended here). */
+    severed?: boolean;
   };
+
+  /** A section is a reactive object: mutate its fields (e.g. `.status`,
+   *  `.text`) and the Workflow updates + animates in place. A higher-level
+   *  flow (like the sketch pipeline) is just a sequence of these states. */
+  export class WorkflowSection {
+    label = $state("");
+    status = $state<WorkflowStatus>("processing");
+    color = $state<string | undefined>(undefined);
+    image = $state<string | undefined>(undefined);
+    alt = $state<string | undefined>(undefined);
+    text = $state<string | undefined>(undefined);
+    frameText = $state<string | undefined>(undefined);
+    severed = $state(false);
+
+    constructor(init: WorkflowSectionInit) {
+      this.label = init.label;
+      if (init.status) this.status = init.status;
+      this.color = init.color;
+      this.image = init.image;
+      this.alt = init.alt;
+      this.text = init.text;
+      this.frameText = init.frameText;
+      this.severed = init.severed ?? false;
+    }
+  }
 
   export type Props = {
     /** The three (or more) sections, in flow order. */
@@ -32,6 +63,7 @@
 
   /** State colors, tuned to sit warmly alongside the pastels above. */
   const STATUS_COLOR: Record<WorkflowStatus, string> = {
+    idle: "#b4bac7", // neutral / not started
     processing: "#4f8ef7", // friendly blue
     success: "#35c98a", // fresh green
     error: "#f2606b", // soft coral red
@@ -42,27 +74,42 @@
 </script>
 
 <script lang="ts">
-  // Defaults demonstrate one of each state across distinct pastel sections.
+  import { scale, fade } from "svelte/transition";
+  import { backOut } from "svelte/easing";
+
+  // Defaults demonstrate one of each state, plus a mid-arrow label.
   const defaults: WorkflowSection[] = [
-    { label: "Sketch", status: "success" },
-    { label: "Combine", status: "processing" },
-    { label: "Doodlebot", status: "error" },
+    new WorkflowSection({
+      label: "Sketch",
+      status: "success",
+      text: "Processing",
+    }),
+    new WorkflowSection({ label: "Combine", status: "processing" }),
+    new WorkflowSection({ label: "Doodlebot", status: "error" }),
   ];
 
   let { sections = defaults }: Props = $props();
 </script>
 
 <div class="workflow" style:--n={sections.length}>
-  {#each sections as section, i (section.label)}
+  {#each sections as section, i}
     <section
       class="section"
       style:--section={sectionColor(section, i)}
       style:--state={STATUS_COLOR[section.status]}
     >
       <!-- ring around the image; striped + animated only while processing -->
-      <div class="card" class:processing={section.status === "processing"}>
+      <div
+        class="card"
+        class:processing={section.status === "processing"}
+        class:idle={section.status === "idle"}
+      >
         <div class="inner">
-          {#if section.image}
+          {#if section.frameText}
+            <span class="frame-text" transition:fade={{ duration: 180 }}>
+              {section.frameText}
+            </span>
+          {:else if section.image}
             <img src={section.image} alt={section.alt ?? section.label} />
           {:else}
             <span class="placeholder" aria-hidden="true"></span>
@@ -75,15 +122,29 @@
 
   <!-- Arrows sit above every section so they can cross section boundaries.
        Each spans the gap between two rings and shares its source section's
-       animated stripes, so it reads as extending out from that ring. -->
-  <div class="arrows" aria-hidden="true">
+       animated stripes, so it reads as extending out from that ring. An
+       optional `text` rides in a pill centered on the arrow. -->
+  <div class="arrows">
     {#each sections.slice(0, -1) as section, i}
-      <div
+      <span
         class="arrow"
         class:processing={section.status === "processing"}
+        class:severed={section.severed}
         style:--at={(i + 1) / sections.length}
         style:--state={STATUS_COLOR[section.status]}
-      ></div>
+        aria-hidden="true"
+      ></span>
+      {#if section.text}
+        <span
+          class="arrow-label"
+          class:processing={section.status === "processing"}
+          style:--at={(i + 1) / sections.length}
+          style:--state={STATUS_COLOR[section.status]}
+          transition:scale={{ duration: 400, start: 0.55, easing: backOut }}
+        >
+          <span class="arrow-label-inner">{section.text}</span>
+        </span>
+      {/if}
     {/each}
   </div>
 </div>
@@ -93,6 +154,8 @@
     --ink: #46506b;
     /* size of the square image card (border-box, ring included) */
     --card: min(44vmin, 220px);
+    /* length of an arrow: the gap between two rings (shared with labels) */
+    --gap: max(28px, calc(100% / var(--n) - var(--card)));
     position: relative;
     display: flex;
     width: 100%;
@@ -150,6 +213,11 @@
        striped background-image from .processing. */
     background-color: var(--state);
   }
+  /* not-started stages sit back visually */
+  .card.idle {
+    opacity: 0.82;
+    box-shadow: 0 4px 14px rgba(40, 40, 70, 0.1);
+  }
   .inner {
     width: 100%;
     height: 100%;
@@ -165,6 +233,13 @@
     max-width: 100%;
     max-height: 100%;
     object-fit: contain;
+  }
+  .frame-text {
+    text-align: center;
+    font-weight: 800;
+    font-size: 0.95rem;
+    line-height: 1.3;
+    color: color-mix(in srgb, var(--state) 68%, #2b2f3a);
   }
   .placeholder {
     width: 100%;
@@ -199,11 +274,45 @@
      span the gap between two rings: sectionLength / n − cardSize. */
   .arrow {
     --thickness: 26px;
-    --gap: max(28px, calc(100% / var(--n) - var(--card)));
     position: absolute;
     /* solid status color (success/error); processing adds stripes on top */
     background-color: var(--state);
     filter: drop-shadow(0 1px 1px rgba(255, 255, 255, 0.5));
+  }
+  /* severed: muted, with a diagonal gap cut through the shaft — the flow
+     ended here so the link is visibly broken. */
+  .arrow.severed {
+    background-color: #c2c6d1;
+    animation: none;
+    background-image: none;
+    -webkit-mask: linear-gradient(
+      135deg,
+      #000 43%,
+      transparent 43% 57%,
+      #000 57%
+    );
+    mask: linear-gradient(135deg, #000 43%, transparent 43% 57%, #000 57%);
+  }
+  /* Mid-arrow label: a white pill whose border echoes the frame/arrow — a
+     solid status color, or the same marching stripes while processing (the
+     .processing class layers striped background-image over the color). */
+  .arrow-label {
+    position: absolute;
+    z-index: 3;
+    padding: 3px;
+    border-radius: 10px;
+    background-color: var(--state);
+    box-shadow: 0 2px 9px rgba(40, 40, 70, 0.22);
+  }
+  .arrow-label-inner {
+    display: block;
+    padding: 0.16rem 0.5rem;
+    border-radius: 7px;
+    background: #ffffff;
+    color: #1c2230;
+    font-weight: 800;
+    font-size: 0.8rem;
+    white-space: nowrap;
   }
 
   /* ---- Portrait (tall screen): flow downward ---- */
@@ -234,6 +343,13 @@
         32% 62%
       );
     }
+    /* sit the pill above the boundary — centered between the source frame's
+       bottom (arrow top) and the arrowhead top (62% down the arrow) */
+    .arrow-label {
+      left: 50%;
+      top: calc(var(--at) * 100% - 0.19 * var(--gap));
+      transform: translate(-50%, -50%);
+    }
   }
 
   /* ---- Landscape (wide screen): flow rightward ---- */
@@ -263,6 +379,12 @@
         62% 68%,
         0 68%
       );
+    }
+    /* drop the pill below the arrow line so both stay visible */
+    .arrow-label {
+      top: calc(50% + 24px);
+      left: calc(var(--at) * 100%);
+      transform: translateX(-50%);
     }
   }
 
