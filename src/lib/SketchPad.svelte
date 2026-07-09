@@ -436,4 +436,33 @@
   .send:active {
     background: #45a049;
   }
+
+  /* Landscape: the panel is wide and short, so a top toolbar squashes the
+     canvas into a thin band. Reflow to a vertical toolbar on the left (matching
+     WorkflowBackdrop, which also reflows by orientation) so the canvas keeps
+     its height. Grid lets the tall toolbar span both rows on the left while the
+     canvas and its Submit bar stack on the right. Portrait keeps the default
+     column layout with the toolbar on top. */
+  @media (orientation: landscape) {
+    .sketchpad {
+      display: grid;
+      grid-template-columns: auto 1fr;
+      grid-template-rows: 1fr auto;
+    }
+    .toolbar {
+      grid-column: 1;
+      grid-row: 1 / 3;
+      flex-direction: column;
+      border-bottom: none;
+      border-right: 1px solid var(--line);
+    }
+    .canvas-wrap {
+      grid-column: 2;
+      grid-row: 1;
+    }
+    .bottom {
+      grid-column: 2;
+      grid-row: 2;
+    }
+  }
 </style>

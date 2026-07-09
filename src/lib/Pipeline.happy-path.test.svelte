@@ -22,12 +22,16 @@
   const steps = [
     () => model.approve(),
     () => model.pairImage(PAIR_A),
-    () => (model.pairImage(PAIR_B), model.startCombining()),
+    // Short banner delay (vs. the real app's 5s) so the "combining takes a
+    // while, go tap an image" info banner shows before this step advances.
+    () => (model.pairImage(PAIR_B), model.startCombining(500)),
     () => model.finishVectorizing(VECTOR_SRC),
     //() => model.sendToRobot("DoodleBot #3"),
     () =>
       model.markComplete(
-        "The drawing has been assigned to the pink bot, go find it!",
+        "The drawing has been assigned to the pink bot, go find it to see your doodle in action!",
+        130, // pink: base ~200° + 130 = 330°
+        { token: "pink", bg: "hsl(330 60% 32%)", fg: "hsl(330 90% 85%)" },
       ),
     () => model.reset(),
   ];
@@ -37,7 +41,7 @@
     const id = setInterval(() => {
       steps[i % steps.length]();
       i += 1;
-    }, 1400);
+    }, 1000);
     return () => clearInterval(id);
   });
 </script>

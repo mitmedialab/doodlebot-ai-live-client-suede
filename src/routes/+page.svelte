@@ -83,9 +83,20 @@
       case "robot-selection":
         if (!payload.robot) return true;
         const color = colorByRobot[payload.robot];
+        const hue = hueByColor[color];
+        // The base overlay is ~200° blue, so the named hue is (200 + rotation)
+        // mod 360. Paint the color word in two shades of that hue — a deep fill
+        // with a light label — so it reads as the color and stays legible for
+        // every hue (incl. yellow).
+        const named = (200 + hue) % 360;
         pipeline.markComplete(
-          `The drawing has been assigned to the ${color} bot, go find it!`,
-          hueByColor[color],
+          `The drawing has been assigned to the ${color} bot, go find it to see your doodle in action!`,
+          hue,
+          {
+            token: color,
+            bg: `hsl(${named} 60% 32%)`,
+            fg: `hsl(${named} 90% 85%)`,
+          },
         );
         return true;
       case "rejected-complex":
@@ -159,7 +170,18 @@
   });
 </script>
 
-<div class="w-screen h-screen h-dvh w-dvh">
+<svelte:head>
+  <!-- theme-color paints the browser's own chrome (a flat fill — it can't be a
+       gradient). The address bar sits above the top edge, where the first
+       section shows; match it to that section's rendered wash (55% of the pink
+       identity color #f4a6cf over white) so the bar bleeds into the app. -->
+  <meta
+    name="theme-color"
+    content={pages.items.length === 0 ? "white" : "#f9cee5"}
+  />
+</svelte:head>
+
+<div class="w-dvw h-dvh overflow-hidden">
   <!-- Dot colors picked to sit on the pastel section washes: a deep indigo-plum
        active dot (echoing the section labels) over a soft lavender inactive. -->
   <Pagination

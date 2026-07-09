@@ -91,8 +91,8 @@
        position the close chip. The margin leaves room for the close chip,
        which straddles the top-right corner, to stay fully on-screen. */
     --margin: 1.5rem;
-    --w: calc(100vw - 2 * var(--margin));
-    --h: calc(100vh - 2 * var(--margin));
+    --w: calc(100dvw - 2 * var(--margin));
+    --h: calc(100dvh - 2 * var(--margin));
     --fab: 60px;
     --accent: #855cd6;
     --ink: #575e75;

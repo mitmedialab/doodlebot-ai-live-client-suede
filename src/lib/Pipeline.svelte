@@ -15,7 +15,16 @@
     | "robot-selection"
     | "complete";
 
-  type Banner = { kind: "error" | "success"; text: string };
+  type Banner = {
+    kind: "error" | "success" | "info";
+    text: string;
+    /** Optional inline color chip: the first occurrence of `token` in `text` is
+     *  rendered as a pill filled with `bg` and lettered in `fg` (e.g. the
+     *  completion message highlights which color robot to go find). Both are
+     *  meant to be shades of the same hue — a deep fill with a light label — so
+     *  the chip reads as that color and stays legible for every hue. */
+    accent?: { token: string; bg: string; fg: string };
+  };
   export type PipelineAction = { label: string; run: (...args: any[]) => void };
 
   export class PipelineModel {
@@ -46,14 +55,26 @@
     /** The submitted photo (kept so reset can restore it). */
     private readonly sketch: string | undefined;
 
+    /** Pending timer for the "combining takes a while" info banner, so it can
+     *  be cancelled if we leave the combining phase (or reset) before it fires. */
+    private bannerTimer: ReturnType<typeof setTimeout> | undefined;
+
     /** @param sketch the submitted photo shown in the first (Sketch) section */
     constructor(sketch?: string) {
       this.sketch = sketch;
       this.approval.image = sketch;
     }
 
+    private clearBannerTimer() {
+      if (this.bannerTimer !== undefined) {
+        clearTimeout(this.bannerTimer);
+        this.bannerTimer = undefined;
+      }
+    }
+
     /** Back to the start — replays cleanly for looping demos. */
     reset() {
+      this.clearBannerTimer();
       this.approval.status = "processing";
       this.approval.text = "Reviewing";
       this.approval.frameText = undefined;
@@ -116,13 +137,34 @@
     pairImage(src: string) {
       this.combination.companions.push(src);
     }
-    startCombining() {
+    /**
+     * Enter the combining phase. Mashing the drawings together + vectorizing can
+     * take a while, so once we've been waiting for `infoBannerDelayMs` we drop a
+     * playful info banner nudging the user to tap a grouped image while they wait
+     * (rather than nagging the instant combining starts). Defaults to 5s for the
+     * real app; tests can pass a shorter delay to surface the banner quickly.
+     */
+    startCombining(infoBannerDelayMs = 5000) {
       this.combination.status = "processing";
       this.combination.text = "Combining";
       this.state = "combining";
+
+      this.clearBannerTimer();
+      this.bannerTimer = setTimeout(() => {
+        this.bannerTimer = undefined;
+        // Only nudge if we're still stuck waiting in the combining phase.
+        if (this.state !== "combining") return;
+        this.banner = {
+          kind: "info",
+          text: "This step can take a while... In the meantime, try tapping on any picture to see it larger.",
+        };
+      }, infoBannerDelayMs);
     }
     /** @param vectorized image src for the combined & vectorized drawing */
     finishVectorizing(vectorized?: string) {
+      // Combining is done — drop the pending nudge and clear it if it showed.
+      this.clearBannerTimer();
+      if (this.banner?.kind === "info") this.banner = undefined;
       this.combination.status = "success";
       // transient status pill clears once resolved
       this.combination.text = undefined;
@@ -134,7 +176,13 @@
       this.robot.text = "Selecting";
       this.state = "robot-selection";
     }
-    markComplete(msg: string, hue: number = 0) {
+    /**
+     * @param msg    the completion message
+     * @param hue    hue-rotation applied to the revealed robot overlay art
+     * @param accent optional inline color chip (e.g. the robot color to find),
+     *               whose `token` must appear verbatim in `msg`
+     */
+    markComplete(msg: string, hue: number = 0, accent?: Banner["accent"]) {
       this.robot.status = "success";
       this.robot.frameText = undefined;
       this.robot.silhouette = false; // reveal the finished drawing
@@ -145,6 +193,7 @@
       this.banner = {
         kind: "success",
         text: msg,
+        accent,
       };
     }
   }
@@ -159,6 +208,15 @@
   import Workflow from "./Workflow.svelte";
 
   let { model = new PipelineModel() }: Props = $props();
+
+  // Split a banner message around the first occurrence of its accent token, so
+  // the token can be rendered as a colored chip inline with the surrounding text.
+  function splitAround(text: string, token: string) {
+    const i = text.indexOf(token);
+    return i === -1
+      ? { before: text, after: "" }
+      : { before: text.slice(0, i), after: text.slice(i + token.length) };
+  }
 </script>
 
 <div class="pipeline">
@@ -166,13 +224,34 @@
 
   {#if model.banner}
     <div class="alert" data-kind={model.banner.kind}>
-      {@render icon(model.banner.kind === "error" ? "warning" : "check")}
-      <span>{model.banner.text}</span>
+      {@render icon(
+        model.banner.kind === "error"
+          ? "warning"
+          : model.banner.kind === "info"
+            ? "info"
+            : "check",
+      )}
+      <span>
+        {#if model.banner.accent}
+          {@const parts = splitAround(
+            model.banner.text,
+            model.banner.accent.token,
+          )}
+          {parts.before}<span
+            class="chip"
+            style:background={model.banner.accent.bg}
+            style:color={model.banner.accent.fg}
+            >{model.banner.accent.token}</span
+          >{parts.after}
+        {:else}
+          {model.banner.text}
+        {/if}
+      </span>
     </div>
   {/if}
 </div>
 
-{#snippet icon(name: "warning" | "check")}
+{#snippet icon(name: "warning" | "check" | "info")}
   <svg class="ic" viewBox="0 0 24 24" aria-hidden="true">
     {#if name === "warning"}
       <path d="M12 3.5 2.5 20.5h19z" />
@@ -181,6 +260,10 @@
     {:else if name === "check"}
       <circle cx="12" cy="12" r="8.5" />
       <path d="M8 12.4 11 15.4 16.2 9" />
+    {:else if name === "info"}
+      <circle cx="12" cy="12" r="8.5" />
+      <path d="M12 11.2v5" />
+      <path d="M12 7.8h.01" />
     {/if}
   </svg>
 {/snippet}
@@ -221,8 +304,25 @@
     background: #e7f7ef;
     color: #1c8b5c;
   }
+  .alert[data-kind="info"] {
+    background: #e9f1fe;
+    color: #2166c9;
+  }
   .alert .ic {
     flex-shrink: 0;
+  }
+
+  /* Inline color pill naming the robot to hunt for. Its bg/fg are set inline to
+     two shades of the robot's own hue (deep fill, light label), so the word
+     reads as that color and stays legible across every hue (incl. yellow). */
+  .chip {
+    display: inline-block;
+    padding: 0.05em 0.5em;
+    margin: 0 0.12em;
+    border-radius: 999px;
+    font-weight: 800;
+    text-transform: capitalize;
+    box-shadow: 0 1px 3px rgba(40, 40, 70, 0.2);
   }
 
   .ic {
