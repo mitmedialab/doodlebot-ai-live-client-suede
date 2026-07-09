@@ -29,8 +29,10 @@
 
   /** TODO: This should probably be fetched live from the server */
   const colorByRobot = {
-    doughnut: "pink",
-  } as const;
+    crumble: "indigo",
+    doughnut: "yellow",
+    mascarpone: "blue",
+  } as const satisfies Record<string, keyof typeof hueByColor>;
 
   const resourceURL = (server: string, identifier: string) =>
     `${server}/resource/${identifier}`;
