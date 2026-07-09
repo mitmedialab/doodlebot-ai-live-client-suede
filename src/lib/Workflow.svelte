@@ -10,16 +10,30 @@
     status?: WorkflowStatus;
     /** Identity color (pastel) for the section. Defaults by position. */
     color?: string;
-    /** Image src shown in the middle of the section. */
+    /** Image src shown in the middle of the section. Rendered as a grey
+     *  silhouette until the section succeeds, then revealed in full color. */
     image?: string;
     /** Alt text for the image. */
     alt?: string;
+    /** Overlay image shown over `image` (transparent, same size). Hidden while
+     *  the silhouette is showing. */
+    overlay?: string;
+    /** Hue-rotation (degrees) applied to the overlay, to recolor it. */
+    hue?: number;
+    /** Show `image` as a flat grey silhouette instead of full color. */
+    silhouette?: boolean;
+    /** Render `image` as a bare outlined shape (its border traces the image's
+     *  outline) instead of inside a rectangular frame. */
+    shaped?: boolean;
     /** Single line shown centered on this section's outgoing arrow. */
     text?: string;
     /** Text shown inside this section's frame (instead of an image). */
     frameText?: string;
-    /** Render this section's outgoing arrow as severed (process ended here). */
+    /** Drop this section's outgoing arrow entirely (process ended here). */
     severed?: boolean;
+    /** Extra source images that feed into this section — shown small near its
+     *  incoming edge, each with a thin arrow into the center. */
+    companions?: string[];
   };
 
   /** A section is a reactive object: mutate its fields (e.g. `.status`,
@@ -31,9 +45,14 @@
     color = $state<string | undefined>(undefined);
     image = $state<string | undefined>(undefined);
     alt = $state<string | undefined>(undefined);
+    overlay = $state<string | undefined>(undefined);
+    hue = $state(0);
+    silhouette = $state(false);
+    shaped = $state(false);
     text = $state<string | undefined>(undefined);
     frameText = $state<string | undefined>(undefined);
     severed = $state(false);
+    companions = $state<string[]>([]);
 
     constructor(init: WorkflowSectionInit) {
       this.label = init.label;
@@ -41,9 +60,14 @@
       this.color = init.color;
       this.image = init.image;
       this.alt = init.alt;
+      this.overlay = init.overlay;
+      this.hue = init.hue ?? 0;
+      this.silhouette = init.silhouette ?? false;
+      this.shaped = init.shaped ?? false;
       this.text = init.text;
       this.frameText = init.frameText;
       this.severed = init.severed ?? false;
+      this.companions = init.companions ?? [];
     }
   }
 
@@ -69,7 +93,10 @@
     error: "#f2606b", // soft coral red
   };
 
-  const sectionColor = (s: WorkflowSection, i: number) =>
+  /** The section's identity color: its explicit `color`, else a palette color
+   *  chosen by position. Exported so the page-level backdrop (which paints the
+   *  section washes + labels) resolves colors identically. */
+  export const sectionColor = (s: WorkflowSection, i: number) =>
     s.color ?? SECTION_PALETTE[i % SECTION_PALETTE.length];
 </script>
 
@@ -89,34 +116,126 @@
   ];
 
   let { sections = defaults }: Props = $props();
+
+  // Click any frame/companion image to expand it into a lightbox modal.
+  let lightbox = $state<{ src: string; alt: string } | null>(null);
+  const openLightbox = (src: string, alt: string) => (lightbox = { src, alt });
+  const closeLightbox = () => (lightbox = null);
+
+  // Move a node to <body> so its `position: fixed` is relative to the viewport
+  // rather than an ancestor with a `transform` (the pagination track slides with
+  // translateX, which would otherwise become the fixed lightbox's containing
+  // block and drag it off-screen on any page but the first).
+  function portal(node: HTMLElement) {
+    document.body.appendChild(node);
+    return {
+      destroy() {
+        node.remove();
+      },
+    };
+  }
+
+  function onKeydown(e: KeyboardEvent) {
+    if (e.key === "Escape") closeLightbox();
+  }
 </script>
+
+<svelte:window onkeydown={onKeydown} />
 
 <div class="workflow" style:--n={sections.length}>
   {#each sections as section, i}
-    <section
-      class="section"
-      style:--section={sectionColor(section, i)}
-      style:--state={STATUS_COLOR[section.status]}
-    >
+    <section class="section" style:--state={STATUS_COLOR[section.status]}>
       <!-- ring around the image; striped + animated only while processing -->
       <div
         class="card"
         class:processing={section.status === "processing"}
         class:idle={section.status === "idle"}
+        class:hero={section.shaped && !!section.image}
       >
         <div class="inner">
           {#if section.frameText}
             <span class="frame-text" transition:fade={{ duration: 180 }}>
               {section.frameText}
             </span>
+          {:else if section.image && !section.shaped}
+            <button
+              type="button"
+              class="img-btn"
+              onclick={() =>
+                openLightbox(section.image!, section.alt ?? section.label)}
+            >
+              <img
+                class="framed"
+                src={section.image}
+                alt={section.alt ?? section.label}
+              />
+            </button>
           {:else if section.image}
-            <img src={section.image} alt={section.alt ?? section.label} />
+            <!-- grey silhouette until success, then the full-color image plus
+                 its (recolorable) overlay -->
+            <div
+              class="hero"
+              class:show-silhouette={section.silhouette}
+              style:--hue={`${section.hue}deg`}
+              style:--img={`url(${section.image})`}
+            >
+              <!-- border + silhouette are rounded together (the goo filter
+                   rounds the composited shape, softening the image's flat
+                   canvas-cropped edges); the full-color image stays crisp -->
+              <span class="hero-silo">
+                <span
+                  class="hero-border"
+                  class:processing={section.status === "processing"}
+                ></span>
+                <span class="silhouette"></span>
+              </span>
+              <img
+                class="hero-full"
+                src={section.image}
+                alt={section.alt ?? section.label}
+              />
+              {#if section.overlay}
+                <img class="hero-overlay" src={section.overlay} alt="" />
+              {/if}
+            </div>
           {:else}
             <span class="placeholder" aria-hidden="true"></span>
           {/if}
         </div>
+        <!-- the final section has no outgoing arrow, so its status pill rides
+             the bottom of the picture instead -->
+        {#if i === sections.length - 1 && section.text}
+          <span
+            class="frame-pill"
+            class:processing={section.status === "processing"}
+            transition:scale={{ duration: 400, start: 0.55, easing: backOut }}
+          >
+            <span class="arrow-label-inner">{section.text}</span>
+          </span>
+        {/if}
       </div>
-      <span class="label">{section.label}</span>
+      <!-- Companion source images attach to the frame's edge (left in portrait,
+           bottom in landscape) and stack along it. Each is a padded ring that
+           shares the section's status color + marching stripes while processing. -->
+      {#if section.companions.length}
+        <div class="companions">
+          {#each section.companions as src, k (k)}
+            <span
+              class="companion"
+              class:processing={section.status === "processing"}
+              transition:scale={{ duration: 280, start: 0.4, easing: backOut }}
+            >
+              <button
+                type="button"
+                class="img-btn"
+                onclick={() => openLightbox(src, "Paired source")}
+              >
+                <img class="companion-img" src={src} alt="Paired source" />
+              </button>
+            </span>
+          {/each}
+        </div>
+      {/if}
     </section>
   {/each}
 
@@ -126,28 +245,87 @@
        optional `text` rides in a pill centered on the arrow. -->
   <div class="arrows">
     {#each sections.slice(0, -1) as section, i}
-      <span
-        class="arrow"
-        class:processing={section.status === "processing"}
-        class:severed={section.severed}
-        style:--at={(i + 1) / sections.length}
-        style:--state={STATUS_COLOR[section.status]}
-        aria-hidden="true"
-      ></span>
-      {#if section.text}
+      <!-- a severed section drops its outgoing arrow entirely -->
+      {#if !section.severed}
         <span
-          class="arrow-label"
+          class="arrow"
           class:processing={section.status === "processing"}
           style:--at={(i + 1) / sections.length}
           style:--state={STATUS_COLOR[section.status]}
-          transition:scale={{ duration: 400, start: 0.55, easing: backOut }}
-        >
-          <span class="arrow-label-inner">{section.text}</span>
-        </span>
+          aria-hidden="true"
+        ></span>
+        {#if section.text}
+          <span
+            class="arrow-label"
+            class:processing={section.status === "processing"}
+            style:--at={(i + 1) / sections.length}
+            style:--state={STATUS_COLOR[section.status]}
+            transition:scale={{ duration: 400, start: 0.55, easing: backOut }}
+          >
+            <span class="arrow-label-inner">{section.text}</span>
+          </span>
+        {/if}
       {/if}
     {/each}
   </div>
+
+  <!-- "round corners" filter: blur then threshold the alpha, so a masked
+       shape's sharp/flat edges become smoothly rounded. -->
+  <svg class="wf-defs" aria-hidden="true" width="0" height="0">
+    <filter
+      id="wf-round"
+      x="-20%"
+      y="-20%"
+      width="140%"
+      height="140%"
+      color-interpolation-filters="sRGB"
+    >
+      <feGaussianBlur in="SourceGraphic" stdDeviation="3.5" result="b" />
+      <feColorMatrix
+        in="b"
+        type="matrix"
+        values="1 0 0 0 0
+                0 1 0 0 0
+                0 0 1 0 0
+                0 0 0 18 -8.5"
+      />
+    </filter>
+  </svg>
 </div>
+
+<!-- Lightbox: click a frame/companion image to expand it here; dismiss with the
+     'x', a backdrop click, or Escape. -->
+{#if lightbox}
+  <div
+    class="lightbox"
+    role="dialog"
+    aria-modal="true"
+    aria-label="Expanded image"
+    tabindex="-1"
+    use:portal
+    onclick={(e) => {
+      if (e.target === e.currentTarget) closeLightbox();
+    }}
+    onkeydown={onKeydown}
+    transition:fade={{ duration: 180 }}
+  >
+    <img
+      class="lightbox-img"
+      src={lightbox.src}
+      alt={lightbox.alt}
+      transition:scale={{ duration: 240, start: 0.85, easing: backOut }}
+    />
+    <button class="lightbox-close" onclick={closeLightbox} aria-label="Close">
+      {@render x()}
+    </button>
+  </div>
+{/if}
+
+{#snippet x()}
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M6 6 18 18M18 6 6 18" />
+  </svg>
+{/snippet}
 
 <style>
   .workflow {
@@ -172,8 +350,9 @@
     flex: 1;
     min-width: 0;
     min-height: 0;
-    /* soft wash of the section's pastel identity color */
-    background: color-mix(in srgb, var(--section) 55%, #ffffff);
+    /* The section's pastel wash + label are painted by WorkflowBackdrop at the
+       page level so they don't slide with the pagination; this component only
+       renders the (sliding) card, arrows, and companions. */
   }
 
   /* Animated striped overlay for the "processing" state — two distinct tones
@@ -218,6 +397,30 @@
     opacity: 0.82;
     box-shadow: 0 4px 14px rgba(40, 40, 70, 0.1);
   }
+  /* "hero" section: the image's silhouette *is* the frame — no rectangular
+     card, no white inner. Height matches --card so arrow spacing is preserved;
+     width follows the image aspect. */
+  .card.hero {
+    width: auto;
+    height: var(--card);
+    aspect-ratio: 604 / 830;
+    padding: 0;
+    background-color: transparent;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  /* no rectangular striped frame while processing — the stripes ride the shape
+     border instead */
+  .card.hero.processing {
+    background-image: none;
+    animation: none;
+  }
+  .card.hero .inner {
+    padding: 4%;
+    background: transparent;
+    border-radius: 0;
+    overflow: visible;
+  }
   .inner {
     width: 100%;
     height: 100%;
@@ -233,6 +436,20 @@
     max-width: 100%;
     max-height: 100%;
     object-fit: contain;
+  }
+  /* transparent wrapper that makes an image clickable (opens the lightbox)
+     without disturbing its layout — fills the frame so contained images (incl.
+     intrinsic-less SVGs) have a definite box to size against */
+  .img-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    padding: 0;
+    border: none;
+    background: none;
+    cursor: zoom-in;
   }
   .frame-text {
     text-align: center;
@@ -253,15 +470,181 @@
     );
   }
 
-  .label {
+  /* Hero image: stacked layers that crossfade from grey silhouette (idle /
+     processing) to full-color image + recolored overlay (success). The border
+     traces the image's alpha outline rather than a rectangle. */
+  .hero {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    filter: drop-shadow(0 5px 9px rgba(40, 40, 70, 0.2));
+  }
+  /* border + silhouette grouped so the goo filter rounds them together */
+  .hero .hero-silo {
     position: absolute;
-    font-weight: 800;
-    font-size: 0.82rem;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    /* a darker shade of the section's pastel, so it stays legible + on-theme */
-    color: color-mix(in srgb, var(--section) 55%, #2b2333);
-    white-space: nowrap;
+    inset: 0;
+    filter: url(#wf-round);
+  }
+  .hero .hero-border,
+  .hero .silhouette,
+  .hero .hero-full,
+  .hero .hero-overlay {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+  }
+  .wf-defs {
+    position: absolute;
+    width: 0;
+    height: 0;
+    pointer-events: none;
+  }
+
+  /* Companion source images, attached to the frame's edge and stacked along
+     it. The container is anchored to the card edge per-orientation (below);
+     flex handles the stacking. */
+  .companions {
+    position: absolute;
+    z-index: 4;
+    display: flex;
+    gap: 6px;
+    pointer-events: none;
+  }
+  /* padded ring around the source image — solid status color, or the marching
+     stripes while processing (the .processing rule layers them on top) */
+  .companion {
+    --comp: calc(var(--card) * 0.32);
+    box-sizing: border-box;
+    width: var(--comp);
+    height: var(--comp);
+    padding: 4px;
+    border-radius: 12px;
+    background-color: var(--state);
+    box-shadow: 0 3px 10px rgba(40, 40, 70, 0.18);
+    /* re-enable clicks (the .companions container disables them so it doesn't
+       block the flow arrows) */
+    pointer-events: auto;
+  }
+  .companion-img {
+    display: block;
+    box-sizing: border-box;
+    width: 100%;
+    height: 100%;
+    padding: 6%;
+    background: #fff;
+    border-radius: 9px;
+    object-fit: contain;
+  }
+  .hero .silhouette,
+  .hero .hero-full,
+  .hero .hero-overlay {
+    transition: opacity 0.35s ease;
+  }
+  /* Border: the status color masked by the image dilated in 8 directions, so
+     it peeks out as an even rim around the shape. The silhouette / full image
+     on top cover the center, leaving only the rim visible. */
+  .hero .hero-border {
+    --bw: 6px;
+    background-color: var(--state);
+    opacity: 1;
+    transition: opacity 0.3s ease;
+    /* image dilated in 16 directions (22.5° apart) for a smooth even rim */
+    -webkit-mask:
+      var(--img) calc(50% + 1 * var(--bw)) calc(50% + 0 * var(--bw)) / contain
+        no-repeat,
+      var(--img) calc(50% + 0.924 * var(--bw)) calc(50% + 0.383 * var(--bw)) /
+        contain no-repeat,
+      var(--img) calc(50% + 0.707 * var(--bw)) calc(50% + 0.707 * var(--bw)) /
+        contain no-repeat,
+      var(--img) calc(50% + 0.383 * var(--bw)) calc(50% + 0.924 * var(--bw)) /
+        contain no-repeat,
+      var(--img) calc(50% + 0 * var(--bw)) calc(50% + 1 * var(--bw)) / contain
+        no-repeat,
+      var(--img) calc(50% - 0.383 * var(--bw)) calc(50% + 0.924 * var(--bw)) /
+        contain no-repeat,
+      var(--img) calc(50% - 0.707 * var(--bw)) calc(50% + 0.707 * var(--bw)) /
+        contain no-repeat,
+      var(--img) calc(50% - 0.924 * var(--bw)) calc(50% + 0.383 * var(--bw)) /
+        contain no-repeat,
+      var(--img) calc(50% - 1 * var(--bw)) calc(50% + 0 * var(--bw)) / contain
+        no-repeat,
+      var(--img) calc(50% - 0.924 * var(--bw)) calc(50% - 0.383 * var(--bw)) /
+        contain no-repeat,
+      var(--img) calc(50% - 0.707 * var(--bw)) calc(50% - 0.707 * var(--bw)) /
+        contain no-repeat,
+      var(--img) calc(50% - 0.383 * var(--bw)) calc(50% - 0.924 * var(--bw)) /
+        contain no-repeat,
+      var(--img) calc(50% + 0 * var(--bw)) calc(50% - 1 * var(--bw)) / contain
+        no-repeat,
+      var(--img) calc(50% + 0.383 * var(--bw)) calc(50% - 0.924 * var(--bw)) /
+        contain no-repeat,
+      var(--img) calc(50% + 0.707 * var(--bw)) calc(50% - 0.707 * var(--bw)) /
+        contain no-repeat,
+      var(--img) calc(50% + 0.924 * var(--bw)) calc(50% - 0.383 * var(--bw)) /
+        contain no-repeat;
+    mask:
+      var(--img) calc(50% + 1 * var(--bw)) calc(50% + 0 * var(--bw)) / contain
+        no-repeat,
+      var(--img) calc(50% + 0.924 * var(--bw)) calc(50% + 0.383 * var(--bw)) /
+        contain no-repeat,
+      var(--img) calc(50% + 0.707 * var(--bw)) calc(50% + 0.707 * var(--bw)) /
+        contain no-repeat,
+      var(--img) calc(50% + 0.383 * var(--bw)) calc(50% + 0.924 * var(--bw)) /
+        contain no-repeat,
+      var(--img) calc(50% + 0 * var(--bw)) calc(50% + 1 * var(--bw)) / contain
+        no-repeat,
+      var(--img) calc(50% - 0.383 * var(--bw)) calc(50% + 0.924 * var(--bw)) /
+        contain no-repeat,
+      var(--img) calc(50% - 0.707 * var(--bw)) calc(50% + 0.707 * var(--bw)) /
+        contain no-repeat,
+      var(--img) calc(50% - 0.924 * var(--bw)) calc(50% + 0.383 * var(--bw)) /
+        contain no-repeat,
+      var(--img) calc(50% - 1 * var(--bw)) calc(50% + 0 * var(--bw)) / contain
+        no-repeat,
+      var(--img) calc(50% - 0.924 * var(--bw)) calc(50% - 0.383 * var(--bw)) /
+        contain no-repeat,
+      var(--img) calc(50% - 0.707 * var(--bw)) calc(50% - 0.707 * var(--bw)) /
+        contain no-repeat,
+      var(--img) calc(50% - 0.383 * var(--bw)) calc(50% - 0.924 * var(--bw)) /
+        contain no-repeat,
+      var(--img) calc(50% + 0 * var(--bw)) calc(50% - 1 * var(--bw)) / contain
+        no-repeat,
+      var(--img) calc(50% + 0.383 * var(--bw)) calc(50% - 0.924 * var(--bw)) /
+        contain no-repeat,
+      var(--img) calc(50% + 0.707 * var(--bw)) calc(50% - 0.707 * var(--bw)) /
+        contain no-repeat,
+      var(--img) calc(50% + 0.924 * var(--bw)) calc(50% - 0.383 * var(--bw)) /
+        contain no-repeat;
+  }
+  /* the idle doodlebot shows no rim — just the silhouette */
+  .card.hero.idle .hero-border {
+    opacity: 0;
+  }
+  /* grey silhouette = the image's opaque shape filled flat grey (via mask);
+     hidden by default, shown only in silhouette mode */
+  .hero .silhouette {
+    background-color: #a7adba;
+    opacity: 0;
+    -webkit-mask: var(--img) center / contain no-repeat;
+    mask: var(--img) center / contain no-repeat;
+  }
+  .hero .hero-full,
+  .hero .hero-overlay {
+    object-fit: contain;
+    opacity: 1;
+  }
+  /* recolor the (light-blue) overlay elements */
+  .hero .hero-overlay {
+    filter: hue-rotate(var(--hue));
+  }
+  /* silhouette mode: grey shape instead of the full-color image + overlay */
+  .hero.show-silhouette .silhouette {
+    opacity: 1;
+  }
+  .hero.show-silhouette .hero-full,
+  .hero.show-silhouette .hero-overlay {
+    opacity: 0;
   }
 
   /* Arrow overlay spans the whole component, above every section. */
@@ -274,35 +657,30 @@
      span the gap between two rings: sectionLength / n − cardSize. */
   .arrow {
     --thickness: 26px;
+    /* fixed arrowhead length so it doesn't stretch with the arrow's length */
+    --head: 22px;
     position: absolute;
     /* solid status color (success/error); processing adds stripes on top */
     background-color: var(--state);
     filter: drop-shadow(0 1px 1px rgba(255, 255, 255, 0.5));
   }
-  /* severed: muted, with a diagonal gap cut through the shaft — the flow
-     ended here so the link is visibly broken. */
-  .arrow.severed {
-    background-color: #c2c6d1;
-    animation: none;
-    background-image: none;
-    -webkit-mask: linear-gradient(
-      135deg,
-      #000 43%,
-      transparent 43% 57%,
-      #000 57%
-    );
-    mask: linear-gradient(135deg, #000 43%, transparent 43% 57%, #000 57%);
-  }
   /* Mid-arrow label: a white pill whose border echoes the frame/arrow — a
      solid status color, or the same marching stripes while processing (the
-     .processing class layers striped background-image over the color). */
-  .arrow-label {
+     .processing class layers striped background-image over the color). The
+     final section reuses this pill under its picture (.frame-pill). */
+  .arrow-label,
+  .frame-pill {
     position: absolute;
     z-index: 3;
     padding: 3px;
     border-radius: 10px;
     background-color: var(--state);
     box-shadow: 0 2px 9px rgba(40, 40, 70, 0.22);
+  }
+  .frame-pill {
+    left: 50%;
+    bottom: -0.7rem;
+    transform: translateX(-50%);
   }
   .arrow-label-inner {
     display: block;
@@ -319,12 +697,6 @@
   @media (orientation: portrait) {
     .workflow {
       flex-direction: column;
-    }
-    /* label runs up the left edge, rotated 90° */
-    .label {
-      left: 1.3rem;
-      top: 50%;
-      transform: translate(-50%, -50%) rotate(-90deg);
     }
     /* arrows point down, centered horizontally, sitting on each boundary */
     .arrow {
@@ -350,6 +722,13 @@
       top: calc(var(--at) * 100% - 0.19 * var(--gap));
       transform: translate(-50%, -50%);
     }
+    /* companions attach to the frame's left edge and stack down it */
+    .companions {
+      top: 50%;
+      right: calc(50% + var(--card) / 2 - 4px);
+      transform: translateY(-50%);
+      flex-direction: column;
+    }
   }
 
   /* ---- Landscape (wide screen): flow rightward ---- */
@@ -357,13 +736,7 @@
     .workflow {
       flex-direction: row;
     }
-    /* label sits along the bottom edge */
-    .label {
-      bottom: 0.9rem;
-      left: 50%;
-      transform: translateX(-50%);
-    }
-    /* arrows point right, centered vertically, sitting on each boundary */
+    /* arrows point right; head is a fixed --head px so it never stretches */
     .arrow {
       top: 50%;
       left: calc(var(--at) * 100%);
@@ -372,11 +745,11 @@
       width: var(--gap);
       clip-path: polygon(
         0 32%,
-        62% 32%,
-        62% 0,
+        calc(100% - var(--head)) 32%,
+        calc(100% - var(--head)) 0,
         100% 50%,
-        62% 100%,
-        62% 68%,
+        calc(100% - var(--head)) 100%,
+        calc(100% - var(--head)) 68%,
         0 68%
       );
     }
@@ -386,6 +759,69 @@
       left: calc(var(--at) * 100%);
       transform: translateX(-50%);
     }
+    /* companions attach to the frame's bottom edge and stack across it */
+    .companions {
+      left: 50%;
+      top: calc(50% + var(--card) / 2 - 4px);
+      transform: translateX(-50%);
+      flex-direction: row;
+    }
+  }
+
+  /* Lightbox: full-screen dimmed backdrop with the enlarged image centered and
+     a close chip in the top-right corner. */
+  .lightbox {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 5vmin;
+    background: rgba(20, 22, 34, 0.72);
+    cursor: zoom-out;
+  }
+  .lightbox-img {
+    max-width: 100%;
+    max-height: 100%;
+    object-fit: contain;
+    border-radius: 12px;
+    background: #fff;
+    box-shadow: 0 18px 60px rgba(0, 0, 0, 0.45);
+  }
+  /* close chip, echoing the frame pills */
+  .lightbox-close {
+    position: absolute;
+    top: max(1rem, 3vmin);
+    right: max(1rem, 3vmin);
+    width: 44px;
+    height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: none;
+    border-radius: 50%;
+    background: #fff;
+    color: #46506b;
+    cursor: pointer;
+    box-shadow: 0 3px 12px rgba(0, 0, 0, 0.3);
+  }
+  .lightbox-close svg {
+    width: 20px;
+    height: 20px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2.4;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  @media (hover: hover) {
+    .lightbox-close:hover {
+      background: #f2f0fb;
+    }
+  }
+  .lightbox-close:active {
+    transform: scale(0.92);
   }
 
   @media (prefers-reduced-motion: reduce) {

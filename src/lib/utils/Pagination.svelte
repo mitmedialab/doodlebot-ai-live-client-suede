@@ -21,6 +21,10 @@
   > = {
     model: Model<P, S>;
     empty: Snippet<[]>;
+    /** Static layer rendered inside the slide viewport, behind the sliding
+     *  track — so it fills the same box the slides do but doesn't move with
+     *  them (e.g. the pipeline's section washes + labels). */
+    backdrop?: Snippet<[]>;
     /** How many dots to show at once before windowing kicks in. */
     maxDots?: number;
     "--active-dot"?: string;
@@ -34,7 +38,7 @@
 >
   import { untrack } from "svelte";
 
-  let { model, empty, maxDots = 7 }: Props<P, S> = $props();
+  let { model, empty, backdrop, maxDots = 7 }: Props<P, S> = $props();
 
   const duration = 300;
 
@@ -194,7 +198,7 @@
   }
 </script>
 
-<div class="flex h-full w-full flex-col">
+<div class="relative flex h-full w-full flex-col">
   {#if n > 0}
     <div
       role="group"
@@ -207,8 +211,13 @@
       onpointerup={onPointerUp}
       onpointercancel={onPointerUp}
     >
+      {#if backdrop}
+        <div class="pointer-events-none absolute inset-0 z-0">
+          {@render backdrop()}
+        </div>
+      {/if}
       <div
-        class="flex h-full"
+        class="relative z-10 flex h-full"
         style:transform={`translateX(${baseOffset + dragDx}px)`}
         style:transition={animating
           ? `transform ${duration}ms ease-out`
@@ -223,7 +232,12 @@
       </div>
     </div>
 
-    <div class="flex items-center justify-center gap-2 py-3">
+    <!-- Dots float over the bottom of the slide viewport so the viewport (and
+         the backdrop it hosts) fills the whole height; the container ignores
+         pointer events so swipes still start anywhere, only the dots capture. -->
+    <div
+      class="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-center gap-2 py-3"
+    >
       <span
         aria-hidden={!overflowLeft}
         class:opacity-0={!overflowLeft}
@@ -247,9 +261,8 @@
               aria-current={active}
               onclick={() => jumpTo(i)}
               class:active
-              class:bg-gray-800={active}
-              class:bg-gray-400={!active}
-              class="dot h-2 w-2 shrink-0 rounded-full transition-[transform,background-color] duration-200"
+              class:opacity-0={allDots.length === 1}
+              class="dot pointer-events-auto h-2 w-2 shrink-0 rounded-full transition-[transform,background-color] duration-200"
               style:transform={`scale(${active ? 1 : dotScale(i)})`}
             ></button>
           {/each}
@@ -272,10 +285,10 @@
 
 <style>
   .dot {
-    /* background-color: var(--inactive-dot); */
+    background-color: var(--inactive-dot, #cbd5e1);
   }
 
   .dot.active {
-    background-color: var(--active-dot) !important;
+    background-color: var(--active-dot, #4b5563) !important;
   }
 </style>

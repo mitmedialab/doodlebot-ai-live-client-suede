@@ -1,16 +1,34 @@
 <script lang="ts">
   import Pipeline, { PipelineModel } from "./Pipeline.svelte";
   import Sweater from "../sweater-vest-suede";
+  import { commandsToImgSrc, type DrawCommand } from "./utils/turtle-svg";
+  import SKETCH_SRC from "./samples/catcar.png";
+  import catcarCommands from "./samples/catcar.json";
+  // other submissions that get paired with the sketch during grouping
+  import PAIR_A from "./samples/beachnugget.png";
+  import PAIR_B from "./samples/angryhashtag.png";
 
-  const model = new PipelineModel();
+  // The combination step's output: the submitted turtle drawing, vectorized.
+  const VECTOR_SRC = commandsToImgSrc(
+    catcarCommands as unknown as DrawCommand[],
+    { stroke: "#2b2f3a", strokeWidth: 13 },
+  );
 
-  // Full progression from approval-pending → complete, then loop.
+  const model = new PipelineModel(SKETCH_SRC);
+
+  // Full progression from approval-pending → complete, then loop. Image sources
+  // are handed to the model as the relevant transitions happen — including the
+  // paired images that arrive dynamically during grouping.
   const steps = [
     () => model.approve(),
-    () => model.startCombining(),
-    () => model.finishVectorizing(),
-    () => model.sendToRobot("DoodleBot #3"),
-    () => model.markComplete(),
+    () => model.pairImage(PAIR_A),
+    () => (model.pairImage(PAIR_B), model.startCombining()),
+    () => model.finishVectorizing(VECTOR_SRC),
+    //() => model.sendToRobot("DoodleBot #3"),
+    () =>
+      model.markComplete(
+        "The drawing has been assigned to the pink bot, go find it!",
+      ),
     () => model.reset(),
   ];
 

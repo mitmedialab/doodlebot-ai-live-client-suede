@@ -1,8 +1,9 @@
 <script lang="ts">
   import Pipeline, { PipelineModel } from "./Pipeline.svelte";
   import Sweater from "../sweater-vest-suede";
+  import SKETCH_SRC from "./samples/catcar.png";
 
-  const model = new PipelineModel();
+  const model = new PipelineModel(SKETCH_SRC);
 
   // approval-pending → rejected (inappropriate), then loop.
   const steps = [() => model.rejectInappropriate(), () => model.reset()];
