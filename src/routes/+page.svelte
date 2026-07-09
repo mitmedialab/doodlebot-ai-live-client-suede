@@ -159,7 +159,7 @@
   });
 </script>
 
-<div class="w-screen h-screen">
+<div class="w-screen h-screen h-dvh w-dvh">
   <!-- Dot colors picked to sit on the pastel section washes: a deep indigo-plum
        active dot (echoing the section labels) over a soft lavender inactive. -->
   <Pagination
