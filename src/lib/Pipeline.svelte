@@ -31,8 +31,8 @@
     readonly robot = new WorkflowSection({
       label: "Doodlebot",
       status: "idle",
-      image: "/full.png",
-      overlay: "/elements.png",
+      image: "./full.png",
+      overlay: "./elements.png",
       hue: 130, // recolor the light-blue hat/pen
       silhouette: true, // grey until the drawing completes
       shaped: true, // outlined robot shape, not a rectangular frame

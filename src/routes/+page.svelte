@@ -124,8 +124,8 @@
   // only to hit a server on a different origin directly.
   const server =
     typeof window === "undefined"
-      ? ""
-      : (new URLSearchParams(window.location.search).get("server") ?? "");
+      ? "."
+      : (new URLSearchParams(window.location.search).get("server") ?? ".");
 
   // Resolves once the client id is known, so a sketch submitted before the SSE
   // handshake finishes still waits for a real id rather than racing it.
