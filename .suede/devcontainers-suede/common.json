@@ -5,14 +5,41 @@
         "anthropic.claude-code",
         "github.copilot",
         "github.copilot-chat",
-        "ms-azuretools.vscode-docker"
+        "ms-azuretools.vscode-docker",
+        "ms-vscode.vscode-typescript-next",
+        "ms-python.python",
+        "ms-python.vscode-pylance",
+        "ms-python.black-formatter",
+        "svelte.svelte-vscode",
+        "bradlc.vscode-tailwindcss"
       ],
+      "files.associations": {
+        "*.css": "tailwindcss"
+      },
       "settings": {
+        "[javascript]": {
+          "editor.defaultFormatter": "esbenp.prettier-vscode"
+        },
         "[markdown]": {
           "editor.defaultFormatter": null
         },
+        "[svelte]": {
+          "editor.defaultFormatter": "svelte.svelte-vscode"
+        },
+        "[typescript]": {
+          "editor.defaultFormatter": "esbenp.prettier-vscode"
+        },
+        "[python]": {
+          "editor.defaultFormatter": "ms-python.black-formatter"
+        },
         "editor.formatOnSave": true,
-        "editor.tabSize": 2
+        "editor.tabSize": 2,
+        "svelte.enable-ts-plugin": true,
+        "python.analysis.typeCheckingMode": "standard",
+        "python.formatting.blackArgs": [
+          "--line-length=88"
+        ],
+        "python.formatting.provider": "black"
       }
     }
   },
@@ -20,6 +47,12 @@
     "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {},
     "ghcr.io/devcontainers/features/git-lfs:1": {},
     "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/node:latest": {
+      "version": "24"
+    },
+    "ghcr.io/devcontainers/features/python:latest": {
+      "version": "3.12"
+    },
     "ghcr.io/guiyomh/features/vim:0": {},
     "ghcr.io/pmalacho-mit/devcontainer-features/git-subrepo:latest": {}
   },
