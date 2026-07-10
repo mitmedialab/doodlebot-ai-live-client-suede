@@ -4,7 +4,7 @@
     status?: "approved" | "innapropriate" | "complex";
     companions?: string[];
     vectorization?: string;
-    robot?: "doughnut";
+    robot?: string;
   };
 
   // The Doodlebot overlay art is drawn in light blue (hue ≈ 200°); markComplete
@@ -15,7 +15,7 @@
   const hueByColor = {
     red: 160, // → 0°
     orange: 190, // → 30°
-    yellow: 220, // → 60°
+    yellow: 215, // → 60°
     lime: 250, // → 90°
     green: 280, // → 120°
     teal: 325, // → 165°
@@ -198,6 +198,7 @@
       // the server round-trip below reconciles it with its sketch id.
       const model = new PipelineModel(dataUrl);
       pages.items.splice(0, 0, model);
+      pages.index = 0;
       opener?.close();
 
       const client = await clientId;

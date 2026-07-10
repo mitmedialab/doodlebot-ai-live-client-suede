@@ -32,6 +32,9 @@ export default defineConfig({
       inlineStyleThreshold: -1,
       output: {
         bundleStrategy: "inline"
+      },
+      files: {
+        assets: "release"
       }
     }),
   ],
