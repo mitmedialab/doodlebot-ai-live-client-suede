@@ -52,6 +52,7 @@
   let startX = 0;
   let startY = 0;
   let axis: "h" | "v" | null = null;
+  let activePointer: number | null = null;
 
   const hasPrev = $derived(model.index > 0);
   const hasNext = $derived(model.index < model.items.length - 1);
@@ -81,27 +82,35 @@
     startX = e.clientX;
     startY = e.clientY;
     axis = null;
-    (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
+    activePointer = e.pointerId;
+    // NB: deliberately *not* setPointerCapture here. Capturing on press makes
+    // the browser retarget the eventual `click` to this container (a mouse
+    // quirk of pointer capture), which swallows clicks on buttons/images
+    // inside a slide (e.g. the Workflow lightbox). We only capture once the
+    // gesture is confirmed to be a horizontal drag (see onPointerMove).
   }
 
   function onPointerMove(e: PointerEvent) {
-    if (
-      animating ||
-      !(e.currentTarget as HTMLElement).hasPointerCapture(e.pointerId)
-    )
-      return;
+    if (animating || activePointer !== e.pointerId) return;
     const dx = e.clientX - startX;
     const dy = e.clientY - startY;
     if (axis === null) {
       if (Math.abs(dx) < 8 && Math.abs(dy) < 8) return;
       axis = Math.abs(dx) > Math.abs(dy) ? "h" : "v";
+      // A confirmed horizontal drag: now take the pointer so the swipe keeps
+      // tracking even if the cursor leaves the element. A tap never reaches
+      // here, so its click is left untouched.
+      if (axis === "h")
+        (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
     }
     if (axis !== "h") return;
     e.preventDefault();
     dragDx = resist(dx);
   }
 
-  function onPointerUp() {
+  function onPointerUp(e: PointerEvent) {
+    if (activePointer !== e.pointerId) return;
+    activePointer = null;
     if (animating || axis !== "h") {
       axis = null;
       return;
