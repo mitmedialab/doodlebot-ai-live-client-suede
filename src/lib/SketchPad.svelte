@@ -8,16 +8,21 @@
     background?: string;
     /** Single stroke width used for the brush. */
     size?: number;
+    /** Seconds the user gets to draw before being prompted to submit. */
+    duration?: number;
     /** Called with a PNG data URL when the user hits "Send". */
     onsend?: (dataUrl: string) => void | Promise<void>;
   };
 </script>
 
 <script lang="ts">
+  import { fade, scale } from "svelte/transition";
+
   let {
     color = "#1a1a18",
     background = "#ffffff",
     size = 6,
+    duration = 20,
     onsend,
   }: Props = $props();
 
@@ -27,6 +32,45 @@
 
   let tool = $state<Tool>("draw");
   const brushSize = $derived(size);
+  // Widest the countdown ever gets, so the chip can reserve a fixed digit width
+  // and not jitter when the number drops a digit (e.g. 10 → 9).
+  const maxDigits = $derived(String(Math.max(1, Math.ceil(duration))).length);
+
+  // Countdown: the user has `duration` seconds to draw, after which they're
+  // prompted to submit or trash & redraw. Because SketchPad is mounted fresh
+  // each time the pad opens (OpenSketchPad guards it with {#if open}), the
+  // mount effect below resets the timer on every open.
+  // svelte-ignore state_referenced_locally -- intentional: seed the display
+  // with the initial duration; startTimer() keeps it in sync thereafter.
+  let remaining = $state(duration);
+  let expired = $state(false);
+  // Set when the user tries to submit a canvas that's essentially blank — swaps
+  // the expiry prompt for an "empty drawing" nudge.
+  let emptyWarning = $state(false);
+  let timer: ReturnType<typeof setInterval> | undefined;
+
+  function startTimer() {
+    clearInterval(timer);
+    remaining = duration;
+    expired = false;
+    emptyWarning = false;
+    timer = setInterval(() => {
+      remaining -= 1;
+      if (remaining <= 0) {
+        remaining = 0;
+        clearInterval(timer);
+        // Decide the moment time's up: an essentially-blank canvas goes
+        // straight to the "looks empty" nudge instead of offering submit.
+        emptyWarning = isEmptyDrawing();
+        expired = true;
+      }
+    }, 1000);
+  }
+
+  $effect(() => {
+    startTimer();
+    return () => clearInterval(timer);
+  });
 
   let drawing = false;
   let lastX = 0;
@@ -176,8 +220,44 @@
     clearCanvas();
   }
 
-  function send() {
+  // A drawing must ink at least this fraction of the canvas to count as
+  // "something". It's a fraction (not an absolute pixel count) so it holds
+  // across devices: the canvas is sized in CSS pixels (see initCanvas), so a
+  // phone, tablet, and laptop all measure the drawing against their own area.
+  // 0.1% clears an obvious empty — a blank canvas, a stray tap, a tiny mark —
+  // while even a short line or small shape (typically >0.3%) passes easily.
+  // The absolute floor guards very small canvases where the fraction underflows.
+  const MIN_INK_FRACTION = 0.001;
+  const MIN_INK_PIXELS = 120;
+
+  // Count inked pixels using the same "darker than near-white" heuristic the
+  // crop in toDataURL relies on (assumes a light background, as it does).
+  function inkedPixelCount(): number {
+    const { data } = ctx.getImageData(0, 0, canvas.width, canvas.height);
+    let count = 0;
+    for (let i = 0; i < data.length; i += 4) {
+      if (data[i] < 240 || data[i + 1] < 240 || data[i + 2] < 240) count++;
+    }
+    return count;
+  }
+
+  function isEmptyDrawing(): boolean {
+    const total = canvas.width * canvas.height;
+    const threshold = Math.max(MIN_INK_PIXELS, total * MIN_INK_FRACTION);
+    return inkedPixelCount() < threshold;
+  }
+
+  // Only reachable from the "time's up" prompt, which is shown only when the
+  // canvas isn't empty (emptiness is decided at expiry — see startTimer).
+  function submit() {
     onsend?.(toDataURL());
+  }
+
+  // Discard the current drawing and hand the user a fresh canvas + timer.
+  function trashAndRedraw() {
+    paintBackground();
+    history = [];
+    startTimer();
   }
 </script>
 
@@ -206,6 +286,21 @@
 
     <div class="tb-space"></div>
 
+    <div
+      class="timer"
+      class:urgent={remaining <= 5}
+      role="timer"
+      aria-label="Time remaining to draw"
+    >
+      {@render clock()}
+      <span class="count"
+        ><span class="num" style="min-width: {maxDigits}ch">{remaining}</span
+        >s</span
+      >
+    </div>
+
+    <div class="tb-space"></div>
+
     <button class="tool-btn" onclick={undoLast} title="Undo" aria-label="Undo">
       {@render backCycleArrow()}
     </button>
@@ -228,18 +323,48 @@
       onmouseleave={endDraw}
       style:background
     ></canvas>
+
+    {#if expired}
+      <!-- When the clock runs out, drawing is locked behind this prompt: the
+           overlay covers the canvas so strokes can't land while it's up. -->
+      <div class="overlay" transition:fade={{ duration: 160 }}>
+        <div class="prompt" transition:scale={{ duration: 200, start: 0.85 }}>
+          {#if emptyWarning}
+            <h2>Looks empty!</h2>
+            <p>
+              The canvas was too empty to submit. Trash it and give it another
+              go.
+            </p>
+            <div class="prompt-actions">
+              <button class="prompt-btn trash" onclick={trashAndRedraw}>
+                {@render trashCan()}
+                <span>Trash &amp; redraw</span>
+              </button>
+            </div>
+          {:else}
+            <h2>Time's up!</h2>
+            <p>Submit your sketch, or trash it and draw something new.</p>
+            <div class="prompt-actions">
+              <button class="prompt-btn trash" onclick={trashAndRedraw}>
+                {@render trashCan()}
+                <span>Trash &amp; redraw</span>
+              </button>
+              <button class="prompt-btn submit" onclick={submit}>
+                {@render paperAirplane()}
+                <span>Submit</span>
+              </button>
+            </div>
+          {/if}
+        </div>
+      </div>
+    {/if}
   </div>
 
   <div class="bottom">
-    <button
-      class="bottom-btn send"
-      onclick={send}
-      title="Submit"
-      aria-label="Submit"
-    >
-      {@render paperAirplane()}
-      <span>Submit</span>
-    </button>
+    <p class="hint">
+      You have <strong>{duration} seconds</strong> to sketch — you'll be prompted
+      to submit when the timer runs out.
+    </p>
   </div>
 </div>
 
@@ -282,6 +407,13 @@
   <svg viewBox="0 0 24 24" aria-hidden="true">
     <path d="M22 2 11 13" />
     <path d="M22 2 15 22l-4-9-9-4Z" />
+  </svg>
+{/snippet}
+
+{#snippet clock()}
+  <svg viewBox="0 0 24 24" aria-hidden="true">
+    <circle cx="12" cy="12" r="9" />
+    <path d="M12 7v5l3 2" />
   </svg>
 {/snippet}
 
@@ -384,27 +516,46 @@
     cursor: crosshair;
   }
 
-  /* bottom bar pinned at bottom */
+  /* bottom bar pinned at bottom — now an informational note instead of a
+     Submit button (submit is prompted when the timer expires). */
   .bottom {
     flex-shrink: 0;
     display: flex;
+    justify-content: center;
+    background: #fff;
+    border-top: 1px solid var(--line);
   }
-  .bottom-btn {
+  .hint {
+    margin: 0;
+    padding: 0.7rem 1rem;
+    text-align: center;
+    font-size: 0.82rem;
+    font-weight: 600;
+    line-height: 1.35;
+    color: var(--ink);
+  }
+  .hint strong {
+    color: var(--accent);
+    font-weight: 800;
+  }
+
+  /* countdown chip in the toolbar */
+  .timer {
     display: flex;
     align-items: center;
-    justify-content: center;
-    gap: 0.45rem;
-    font-family: inherit;
-    font-size: 0.9rem;
-    font-weight: 700;
-    border: none;
-    background: #eef0f6;
-    color: var(--ink);
-    padding: 0.85rem 1rem;
-    cursor: pointer;
-    transition: all 0.14s ease;
+    gap: 0.3rem;
+    padding: 0.3rem 0.6rem;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-size: 0.95rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    transition:
+      background-color 0.2s ease,
+      color 0.2s ease;
   }
-  .bottom-btn svg {
+  .timer svg {
     width: 17px;
     height: 17px;
     fill: none;
@@ -413,27 +564,120 @@
     stroke-linecap: round;
     stroke-linejoin: round;
   }
-  @media (hover: hover) {
-    .bottom-btn:hover {
-      background: #e2e5ef;
-    }
-    .send:hover {
-      background: #45a049;
+  /* Reserve a fixed, right-aligned slot for the digits (width set inline from
+     maxDigits) so the chip doesn't shift when the count drops a digit. */
+  .timer .num {
+    display: inline-block;
+    text-align: right;
+  }
+  .timer.urgent {
+    background: #fde3e3;
+    color: #d64545;
+    animation: timer-pulse 1s ease-in-out infinite;
+  }
+  @keyframes timer-pulse {
+    50% {
+      transform: scale(1.08);
     }
   }
-  .bottom-btn:focus {
+  @media (prefers-reduced-motion: reduce) {
+    .timer.urgent {
+      animation: none;
+    }
+  }
+
+  /* time's-up prompt covering the canvas */
+  .overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.7rem;
+    background: rgba(58, 43, 99, 0.28);
+    backdrop-filter: blur(2px);
+    z-index: 5;
+  }
+  .prompt {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.5rem;
+    max-width: 320px;
+    padding: 1.4rem 1.3rem;
+    border-radius: 18px;
+    background: #fff;
+    box-shadow: 0 12px 40px rgba(58, 43, 99, 0.32);
+    text-align: center;
+  }
+  .prompt h2 {
+    margin: 0;
+    font-size: 1.25rem;
+    font-weight: 800;
+    color: var(--ink);
+  }
+  .prompt p {
+    margin: 0 0 0.6rem;
+    font-size: 0.9rem;
+    line-height: 1.4;
+    color: var(--ink);
+  }
+  .prompt-actions {
+    display: flex;
+    gap: 0.6rem;
+    width: 100%;
+  }
+  .prompt-btn {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+    font-family: inherit;
+    font-size: 0.9rem;
+    font-weight: 700;
+    border: none;
+    border-radius: 12px;
+    padding: 0.75rem 0.6rem;
+    cursor: pointer;
+    transition: all 0.14s ease;
+  }
+  .prompt-btn svg {
+    width: 17px;
+    height: 17px;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .prompt-btn:active {
+    transform: translateY(1px);
+  }
+  .prompt-btn:focus {
     outline: none;
   }
-  .bottom-btn:focus-visible {
+  .prompt-btn:focus-visible {
     outline: 2px solid var(--accent);
-    outline-offset: -3px;
+    outline-offset: 2px;
   }
-  .send {
-    flex: 1;
+  .prompt-btn.trash {
+    background: #eef0f6;
+    color: var(--ink);
+  }
+  .prompt-btn.submit {
     background: var(--send);
     color: #fff;
   }
-  .send:active {
+  @media (hover: hover) {
+    .prompt-btn.trash:hover {
+      background: #e2e5ef;
+    }
+    .prompt-btn.submit:hover {
+      background: #45a049;
+    }
+  }
+  .prompt-btn.submit:active {
     background: #45a049;
   }
 
