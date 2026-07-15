@@ -22,7 +22,7 @@
     color = "#1a1a18",
     background = "#ffffff",
     size = 6,
-    duration = 20,
+    duration = 15,
     onsend,
   }: Props = $props();
 
