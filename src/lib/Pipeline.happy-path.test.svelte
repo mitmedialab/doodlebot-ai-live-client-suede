@@ -1,5 +1,6 @@
 <script lang="ts">
   import Pipeline, { PipelineModel } from "./Pipeline.svelte";
+  import { describeRobotColor } from "./color";
   import Sweater from "../sweater-vest-suede";
   import { commandsToImgSrc, type DrawCommand } from "./utils/turtle-svg";
   import SKETCH_SRC from "./samples/catcar.png";
@@ -27,12 +28,15 @@
     () => (model.pairImage(PAIR_B), model.startCombining(500)),
     () => model.finishVectorizing(VECTOR_SRC),
     //() => model.sendToRobot("DoodleBot #3"),
-    () =>
+    () => {
+      // A sample assigned hat color (a leafy green) exercised end-to-end.
+      const { name, filter, chip } = describeRobotColor("#52a447");
       model.markComplete(
-        "The drawing has been assigned to the pink bot, go find it to see your doodle in action!",
-        130, // pink: base ~200° + 130 = 330°
-        { token: "pink", bg: "hsl(330 60% 32%)", fg: "hsl(330 90% 85%)" },
-      ),
+        `The drawing has been assigned to the robot with the ${name} hat, go find it to see your doodle in action!`,
+        filter,
+        { token: name, ...chip },
+      );
+    },
     () => model.reset(),
   ];
 

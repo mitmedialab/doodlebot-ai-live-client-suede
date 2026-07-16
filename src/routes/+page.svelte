@@ -1,38 +1,14 @@
 <script lang="ts" module>
+  import { describeRobotColor } from "$lib/color";
+
   type SSEPayload = {
     sketch: string;
     status?: "approved" | "innapropriate" | "complex";
     companions?: string[];
     vectorization?: string;
     robot?: string;
+    color?: string;
   };
-
-  // The Doodlebot overlay art is drawn in light blue (hue ≈ 200°); markComplete
-  // recolors it with `hue-rotate(<deg>)`, so each value here is the rotation, in
-  // degrees, that turns that base blue into the named color (base 200° + value,
-  // mod 360, ≈ the target hue). Only hue-based colors are reachable this way —
-  // greys/browns/black/white can't be produced by a hue rotation.
-  const hueByColor = {
-    red: 160, // → 0°
-    orange: 190, // → 30°
-    yellow: 215, // → 60°
-    lime: 250, // → 90°
-    green: 280, // → 120°
-    teal: 325, // → 165°
-    cyan: 340, // → 180°
-    blue: 40, // → 240°
-    indigo: 60, // → 260°
-    purple: 80, // → 280°
-    magenta: 100, // → 300°
-    pink: 130, // → 330°
-  } as const satisfies Record<string, number>;
-
-  /** TODO: This should probably be fetched live from the server */
-  const colorByRobot = {
-    crumble: "indigo",
-    doughnut: "yellow",
-    mascarpone: "blue",
-  } as const satisfies Record<string, keyof typeof hueByColor>;
 
   const resourceURL = (server: string, identifier: string) =>
     `${server}/resource/${identifier}`;
@@ -81,22 +57,15 @@
         pipeline.finishVectorizing(resourceURL(server, payload.vectorization));
         return true;
       case "robot-selection":
-        if (!payload.robot) return true;
-        const color = colorByRobot[payload.robot];
-        const hue = hueByColor[color];
-        // The base overlay is ~200° blue, so the named hue is (200 + rotation)
-        // mod 360. Paint the color word in two shades of that hue — a deep fill
-        // with a light label — so it reads as the color and stays legible for
-        // every hue (incl. yellow).
-        const named = (200 + hue) % 360;
+        // The server assigns a robot and its hat color (a hex string). Translate
+        // the hex into a human-readable name, the filter that repaints the red
+        // hat overlay to match, and a matching inline color chip.
+        if (!payload.color) return true;
+        const { name, filter, chip } = describeRobotColor(payload.color);
         pipeline.markComplete(
-          `The drawing has been assigned to the ${color} bot, go find it to see your doodle in action!`,
-          hue,
-          {
-            token: color,
-            bg: `hsl(${named} 60% 32%)`,
-            fg: `hsl(${named} 90% 85%)`,
-          },
+          `The drawing has been assigned to the robot with the ${name} hat, go find it to see your doodle in action!`,
+          filter,
+          { token: name, ...chip },
         );
         return true;
       case "rejected-complex":

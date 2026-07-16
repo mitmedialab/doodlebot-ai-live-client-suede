@@ -1,5 +1,6 @@
 <script lang="ts" module>
   import { WorkflowSection } from "./Workflow.svelte";
+  import type { OverlayFilter } from "./color";
 
   // The DoodleBot submit-a-sketch pipeline is just a sequence of states the
   // Workflow can be in. PipelineModel owns the three WorkflowSection instances
@@ -42,7 +43,8 @@
       status: "idle",
       image: "./full.png",
       overlay: "./elements.png",
-      hue: 130, // recolor the light-blue hat/pen
+      // Overlay recolor left at identity — the hat art is a deep red at rest;
+      // markComplete retints it to the server-assigned color once assigned.
       silhouette: true, // grey until the drawing completes
       shaped: true, // outlined robot shape, not a rectangular frame
     });
@@ -178,16 +180,24 @@
     }
     /**
      * @param msg    the completion message
-     * @param hue    hue-rotation applied to the revealed robot overlay art
+     * @param filter recolor (hue-rotate/saturate/brightness) applied to the
+     *               revealed robot overlay art, retinting the red hat to the
+     *               assigned color. Defaults to identity (the art's own red).
      * @param accent optional inline color chip (e.g. the robot color to find),
      *               whose `token` must appear verbatim in `msg`
      */
-    markComplete(msg: string, hue: number = 0, accent?: Banner["accent"]) {
+    markComplete(
+      msg: string,
+      filter?: OverlayFilter,
+      accent?: Banner["accent"],
+    ) {
       this.robot.status = "success";
       this.robot.frameText = undefined;
       this.robot.silhouette = false; // reveal the finished drawing
       this.robot.text = undefined;
-      this.robot.hue = hue;
+      this.robot.hue = filter?.hue ?? 0;
+      this.robot.saturate = filter?.saturate ?? 1;
+      this.robot.brightness = filter?.brightness ?? 1;
       this.state = "complete";
       this.step = "Done";
       this.banner = {

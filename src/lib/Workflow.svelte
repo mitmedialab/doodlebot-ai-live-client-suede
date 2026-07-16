@@ -18,8 +18,13 @@
     /** Overlay image shown over `image` (transparent, same size). Hidden while
      *  the silhouette is showing. */
     overlay?: string;
-    /** Hue-rotation (degrees) applied to the overlay, to recolor it. */
+    /** Overlay recolor, applied as `hue-rotate() saturate() brightness()`.
+     *  Together they can retint the (deep red) overlay art to any color — hue
+     *  shifts it, saturate scales its vividness, brightness its lightness.
+     *  Defaults are identity (0° / 1× / 1×), i.e. the art's own color. */
     hue?: number;
+    saturate?: number;
+    brightness?: number;
     /** Show `image` as a flat grey silhouette instead of full color. */
     silhouette?: boolean;
     /** Render `image` as a bare outlined shape (its border traces the image's
@@ -47,6 +52,8 @@
     alt = $state<string | undefined>(undefined);
     overlay = $state<string | undefined>(undefined);
     hue = $state(0);
+    saturate = $state(1);
+    brightness = $state(1);
     silhouette = $state(false);
     shaped = $state(false);
     text = $state<string | undefined>(undefined);
@@ -62,6 +69,8 @@
       this.alt = init.alt;
       this.overlay = init.overlay;
       this.hue = init.hue ?? 0;
+      this.saturate = init.saturate ?? 1;
+      this.brightness = init.brightness ?? 1;
       this.silhouette = init.silhouette ?? false;
       this.shaped = init.shaped ?? false;
       this.text = init.text;
@@ -177,6 +186,8 @@
               class="hero"
               class:show-silhouette={section.silhouette}
               style:--hue={`${section.hue}deg`}
+              style:--saturate={section.saturate}
+              style:--brightness={section.brightness}
               style:--img={`url(${section.image})`}
             >
               <!-- border + silhouette are rounded together (the goo filter
@@ -634,9 +645,11 @@
     object-fit: contain;
     opacity: 1;
   }
-  /* recolor the (light-blue) overlay elements */
+  /* recolor the (deep red) overlay elements: shift hue, then scale saturation
+     and lightness so the one asset can stand in for any assigned robot color */
   .hero .hero-overlay {
-    filter: hue-rotate(var(--hue));
+    filter: hue-rotate(var(--hue)) saturate(var(--saturate))
+      brightness(var(--brightness));
   }
   /* silhouette mode: grey shape instead of the full-color image + overlay */
   .hero.show-silhouette .silhouette {

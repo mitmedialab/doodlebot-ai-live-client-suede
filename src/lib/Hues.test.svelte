@@ -1,64 +1,74 @@
 <script lang="ts">
   import Sweater from "../sweater-vest-suede/Sweater.svelte";
+  import { describeRobotColor } from "./color";
 
-  const hueByColor = {
-    red: 155, // → 0°
-    orange: 190, // → 30°
-    yellow: 215, // → 60°
-    lime: 250, // → 90°
-    green: 280, // → 120°
-    teal: 325, // → 165°
-    cyan: 340, // → 180°
-    blue: 40, // → 240°
-    indigo: 60, // → 260°
-    purple: 80, // → 280°
-    magenta: 100, // → 300°
-    pink: 130, // → 330°
-  } as const satisfies Record<string, number>;
+  // Visual check for the hex → overlay-recolor pipeline. Each swatch shows a
+  // target hex, its human-readable name, and the red-hat overlay recolored via
+  // the CSS filter `describeRobotColor` derives — so you can eyeball how closely
+  // the retinted hat matches the target chip across the whole color space.
+  const samples = [
+    "#c0392b", // red
+    "#e67e22", // orange
+    "#f1c40f", // yellow
+    "#a3c644", // lime
+    "#52a447", // green (the server example)
+    "#16a085", // teal
+    "#1ab2c8", // cyan
+    "#2f6fd8", // blue
+    "#5b3fbf", // indigo
+    "#8e44ad", // violet
+    "#b3379a", // purple
+    "#e84393", // pink
+    "#8b5a2b", // brown
+    "#7f8c8d", // gray
+    "#2c2c2c", // near-black
+    "#ecf0f1", // near-white
+  ];
 
-  const brightnessByColor = {
-    red: 0.8,
-    orange: 1,
-    yellow: 1.25,
-    lime: 1,
-    green: 1,
-    teal: 1,
-    cyan: 1,
-    blue: 1,
-    indigo: 1,
-    purple: 1,
-    magenta: 1,
-    pink: 1,
-  } as const;
+  const samplesPerRow = 4;
 
-  let adjustment = $state(0);
+  // Split the flat sample list into rows of `samplesPerRow` for the grid layout.
+  const rows = samples.reduce<string[][]>((acc, hex, i) => {
+    if (i % samplesPerRow === 0) acc.push([]);
+    acc[acc.length - 1].push(hex);
+    return acc;
+  }, []);
 </script>
 
-<label for="input">hue adjustment</label>
-<input type="number" id="input" bind:value={adjustment} />
-
-{#each Object.entries(hueByColor) as [key, hue]}
-  <Sweater body={async () => {}}>
-    {#snippet vest(_: {})}
-      <div class="workflow">
-        <section class="section">
-          <!-- ring around the image; striped + animated only while processing -->
-          <div class="card hero">
-            <div class="inner">
-              <div
-                class="hero"
-                style:--hue={`${hue + adjustment}deg`}
-                style:--brightness={brightnessByColor[key]}
-              >
-                <h2>{key}</h2>
-                <img class="hero-full" src={"/full.png"} alt="" />
-                <img class="hero-overlay" src={"/elements.png"} alt="" />
+{#each rows as row}
+  <Sweater config>
+    {#each row as hex}
+      {@const { name, filter, chip } = describeRobotColor(hex)}
+      <Sweater body={async () => {}}>
+        {#snippet vest(_: {})}
+          <div class="workflow">
+            <section class="section">
+              <div class="card hero">
+                <div class="inner">
+                  <!-- label band, reserved above the image so it never overlaps -->
+                  <header class="labels">
+                    <h2 style:background={chip.bg} style:color={chip.fg}>
+                      {name} · {hex}
+                    </h2>
+                    <!-- target color, so the retinted hat can be compared to it -->
+                    <span class="target" style:background={hex}></span>
+                  </header>
+                  <div
+                    class="hero"
+                    style:--hue={`${filter.hue}deg`}
+                    style:--saturate={filter.saturate}
+                    style:--brightness={filter.brightness}
+                  >
+                    <img class="hero-full" src={"/full.png"} alt="" />
+                    <img class="hero-overlay" src={"/elements.png"} alt="" />
+                  </div>
+                </div>
               </div>
-            </div>
+            </section>
           </div>
-        </section>
-      </div>
-    {/snippet}
+        {/snippet}
+      </Sweater>
+    {/each}
   </Sweater>
 {/each}
 
@@ -121,7 +131,8 @@
      width follows the image aspect. */
   .card.hero {
     width: auto;
-    height: var(--card);
+    /* extra height beyond the image so the label band has its own room */
+    height: calc(var(--card) + 2.4rem);
     aspect-ratio: 604 / 830;
     padding: 0;
     background-color: transparent;
@@ -134,6 +145,20 @@
     background: transparent;
     border-radius: 0;
     overflow: visible;
+    /* stack the label band above the image so neither overlaps the other */
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 6px;
+  }
+
+  /* label band: title on the left, target swatch on the right */
+  .labels {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 8px;
+    flex: 0 0 auto;
   }
   .inner {
     width: 100%;
@@ -152,13 +177,31 @@
     object-fit: contain;
   }
 
+  /* target color chip, sitting in the label band for side-by-side comparison */
+  .target {
+    flex: 0 0 auto;
+    width: 22%;
+    aspect-ratio: 3 / 2;
+    border-radius: 8px;
+    box-shadow: 0 1px 4px rgba(40, 40, 70, 0.3);
+  }
+  h2 {
+    margin: 0;
+    padding: 0.1em 0.5em;
+    border-radius: 999px;
+    font-size: 0.8rem;
+    text-transform: capitalize;
+  }
+
   /* Hero image: stacked layers that crossfade from grey silhouette (idle /
      processing) to full-color image + recolored overlay (success). The border
      traces the image's alpha outline rather than a rectangle. */
   .hero {
     position: relative;
     width: 100%;
-    height: 100%;
+    /* fill whatever vertical room is left after the label band */
+    flex: 1 1 auto;
+    min-height: 0;
     filter: drop-shadow(0 5px 9px rgba(40, 40, 70, 0.2));
   }
 
@@ -180,9 +223,10 @@
     object-fit: contain;
     opacity: 1;
   }
-  /* recolor the (light-blue) overlay elements */
+  /* recolor the (deep red) overlay elements — same filter chain as the app */
   .hero .hero-overlay {
-    filter: hue-rotate(var(--hue)) brightness(var(--brightness));
+    filter: hue-rotate(var(--hue)) saturate(var(--saturate))
+      brightness(var(--brightness));
   }
 
   /* ---- Portrait (tall screen): flow downward ---- */
