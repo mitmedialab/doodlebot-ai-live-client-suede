@@ -108,7 +108,7 @@
       this.step = "Step 2 of 3";
     }
     rejectInappropriate() {
-      this.reject("Inappropriate content", {
+      this.reject("Inappropriate content. Please draw something else!", {
         kind: "error",
         text: "Picture hidden — flagged as inappropriate",
       });
@@ -116,7 +116,7 @@
       this.state = "rejected-inappropriate";
     }
     rejectTooComplex() {
-      this.reject("Drawing too complex");
+      this.reject("Drawing too complex. Please try again!");
       this.state = "rejected-complex";
     }
     private reject(reason: string, banner?: Banner) {
