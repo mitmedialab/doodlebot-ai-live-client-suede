@@ -7,12 +7,19 @@ import tailwindcss from "@tailwindcss/vite";
 // Proxy its routes through the dev server so the browser only ever talks to the
 // Vite origin (the one VS Code auto-forwards) — no need to forward :8000 or pass
 // a cross-origin ?server=. Override the target with TEST_SERVER if it moves.
-const TEST_SERVER = process.env.TEST_SERVER ?? "http://localhost:8000";
+const TEST_SERVER = process.env.TEST_SERVER ?? "http://doodlebot-ai-live-server:5000/";
 const apiProxy = Object.fromEntries(
-  ["/client", "/sketch", "/resource", "/events"].map((path) => [
-    path,
-    { target: TEST_SERVER, changeOrigin: true },
-  ]),
+  // NB: proxy the admin *API* subpaths individually, not the `/admin` prefix —
+  // `/admin` itself is the SvelteKit admin page route and must not be proxied.
+  [
+    "/client",
+    "/sketch",
+    "/resource",
+    "/events",
+    "/admin/events",
+    "/admin/sketch",
+    "/admin/vectorization",
+  ].map((path) => [path, { target: TEST_SERVER, changeOrigin: true }]),
 );
 
 export default defineConfig({
