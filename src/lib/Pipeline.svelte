@@ -158,7 +158,7 @@
         if (this.state !== "combining") return;
         this.banner = {
           kind: "info",
-          text: "This step can take a while... In the meantime, try tapping on any picture to see it larger. Or sketch something else!",
+          text: "This step can take a while... In the meantime, try tapping on any picture to see it larger, checkout out what the doodlebots have already drawn, or sketch something else!",
         };
       }, infoBannerDelayMs);
     }
