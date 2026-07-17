@@ -19,6 +19,7 @@ const apiProxy = Object.fromEntries(
     "/admin/events",
     "/admin/sketch",
     "/admin/vectorization",
+    "/admin/sessions"
   ].map((path) => [path, { target: TEST_SERVER, changeOrigin: true }]),
 );
 

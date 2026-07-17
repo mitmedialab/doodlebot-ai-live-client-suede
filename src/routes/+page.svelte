@@ -70,6 +70,7 @@
         return true;
       case "rejected-complex":
       case "rejected-inappropriate":
+      case "rejected-inactive-session":
       case "complete":
         console.error(
           `New message received for sketch ${sketch} in unexpected state: ${pipeline.state}`,
@@ -88,6 +89,7 @@
   import OpenSketchPad from "$lib/OpenSketchPad.svelte";
   import WorkflowBackdrop from "$lib/WorkflowBackdrop.svelte";
   import EmptyState from "$lib/EmptyState.svelte";
+  import MissingSession from "$lib/MissingSession.svelte";
 
   const pipelineByHash = new Map<string, PipelineModel>();
   const pages = new PagesModel<PipelineModel, typeof page>(page);
@@ -107,11 +109,24 @@
       ? "."
       : (new URLSearchParams(window.location.search).get("server") ?? ".");
 
+  // The room/session key from the URL (?session=<token>). Not a secret — it just
+  // scopes submissions to an active event session. Held for the whole session
+  // and sent on every sketch POST; without it, submissions can't be accepted, so
+  // we show a friendly "wrong link" notice instead of the sketch pad.
+  const session =
+    typeof window === "undefined"
+      ? null
+      : new URLSearchParams(window.location.search).get("session");
+
   // Resolves once the client id is known, so a sketch submitted before the SSE
   // handshake finishes still waits for a real id rather than racing it.
   let clientId: Promise<string> | undefined;
 
   onMount(() => {
+    // No session key → nothing is submittable; the notice renders instead of the
+    // app, so skip client registration and the SSE stream entirely.
+    if (!session) return;
+
     let source: EventSource | undefined;
 
     clientId = (async () => {
@@ -151,6 +166,11 @@
 </svelte:head>
 
 <div class="w-dvw h-dvh overflow-hidden">
+  {#if !session}
+    <!-- No ?session= key in the URL: nothing can be submitted, so explain the
+         likely wrong-link situation instead of showing the sketch pad. -->
+    <MissingSession />
+  {:else}
   <!-- Dot colors picked to sit on the pastel section washes: a deep indigo-plum
        active dot (echoing the section labels) over a soft lavender inactive. -->
   <Pagination
@@ -176,9 +196,21 @@
       const response = await fetch(`${server}/sketch`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ client, sketch: dataUrl }),
+        body: JSON.stringify({ client, session, sketch: dataUrl }),
       });
-      const { sketch } = (await response.json()) as { sketch: string };
+      // Always 200. `status: "inactive session"` is the ONLY verdict returned
+      // synchronously here (the three moderation verdicts arrive later via SSE);
+      // it means the session token isn't active, so no pipeline exists and no SSE
+      // events will come — reject the card now and don't track it.
+      const { sketch, status } = (await response.json()) as {
+        sketch: string;
+        status?: "inactive session" | null;
+      };
+
+      if (status === "inactive session") {
+        model.rejectInactiveSession();
+        return;
+      }
 
       const existing = pipelineByHash.get(sketch);
       if (existing && existing !== model) {
@@ -190,6 +222,7 @@
       } else pipelineByHash.set(sketch, model);
     }}
   />
+  {/if}
 </div>
 
 {#snippet page(model: PipelineModel)}

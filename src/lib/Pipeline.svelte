@@ -11,6 +11,7 @@
     | "approval-pending"
     | "rejected-inappropriate"
     | "rejected-complex"
+    | "rejected-inactive-session"
     | "approved"
     | "combining"
     | "robot-selection"
@@ -118,6 +119,15 @@
     rejectTooComplex() {
       this.reject("Drawing too complex. Please try again!");
       this.state = "rejected-complex";
+    }
+    /** Synchronous, pre-pipeline rejection: the sketch rode a session token that
+     *  isn't active. No SSE events will ever arrive for it. */
+    rejectInactiveSession() {
+      this.reject("This session isn't active — ask the host for a current link.", {
+        kind: "error",
+        text: "Session not active — get a fresh link from the event host",
+      });
+      this.state = "rejected-inactive-session";
     }
     private reject(reason: string, banner?: Banner) {
       this.approval.status = "error";

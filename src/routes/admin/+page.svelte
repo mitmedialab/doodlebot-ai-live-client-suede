@@ -168,6 +168,74 @@
   function sketchRank(item: SketchItem): number {
     return sortedSketches.indexOf(item) + 1;
   }
+
+  // ── Active sessions management ───────────────────────────────────────────────
+  // A sketch is only accepted if its ?session= token is in this set. The panel
+  // GETs the current set on open, edits it locally as chips, and POSTs the whole
+  // desired list on save (wholesale replace — not a delta). No SSE involvement.
+  let sessionsOpen = $state(false);
+  let sessions = $state<string[]>([]);
+  let newSession = $state("");
+  let sessionsLoading = $state(false);
+  let sessionsSaving = $state(false);
+  let sessionsError = $state<string | null>(null);
+  let sessionsSaved = $state(false); // transient "Saved ✓" note
+
+  async function openSessions() {
+    sessionsOpen = true;
+    await loadSessions();
+  }
+
+  async function loadSessions() {
+    sessionsLoading = true;
+    sessionsError = null;
+    sessionsSaved = false;
+    try {
+      const res = await fetch(withToken("/admin/sessions"));
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as { sessions: string[] };
+      sessions = [...data.sessions];
+    } catch (err) {
+      sessionsError = `couldn't load sessions (${String(err)})`;
+    } finally {
+      sessionsLoading = false;
+    }
+  }
+
+  function addSession() {
+    const t = newSession.trim();
+    newSession = "";
+    if (!t || sessions.includes(t)) return;
+    sessions = [...sessions, t];
+    sessionsSaved = false;
+  }
+
+  function removeSession(t: string) {
+    sessions = sessions.filter((s) => s !== t);
+    sessionsSaved = false;
+  }
+
+  async function saveSessions() {
+    sessionsSaving = true;
+    sessionsError = null;
+    try {
+      const res = await fetch(withToken("/admin/sessions"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // Wholesale replace with the complete desired list; blank strings are
+        // dropped server-side. The response is the stored, sorted set.
+        body: JSON.stringify({ sessions }),
+      });
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const data = (await res.json()) as { sessions: string[] };
+      sessions = [...data.sessions];
+      sessionsSaved = true;
+    } catch (err) {
+      sessionsError = `couldn't save sessions (${String(err)})`;
+    } finally {
+      sessionsSaving = false;
+    }
+  }
 </script>
 
 <svelte:head>
@@ -194,7 +262,13 @@
       ></span>
       {connected ? "connected" : "disconnected"}
     </span>
-    <label class="ml-auto flex items-center gap-1 text-xs text-slate-500">
+    <button
+      class="ml-auto rounded border border-slate-300 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+      onclick={openSessions}
+    >
+      Active sessions
+    </button>
+    <label class="flex items-center gap-1 text-xs text-slate-500">
       token
       <input
         class="w-28 rounded border border-slate-300 px-1.5 py-0.5 text-slate-800"
@@ -523,3 +597,91 @@
     </div>
   </div>
 {/snippet}
+
+<!-- ── Active sessions modal ─────────────────────────────────────────────────── -->
+{#if sessionsOpen}
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+    <div class="flex w-full max-w-md flex-col rounded-lg bg-white p-4 shadow-xl">
+      <div class="mb-2 flex items-center justify-between">
+        <h3 class="text-base font-bold text-slate-900">Active sessions</h3>
+        <button
+          class="rounded px-2 text-lg leading-none text-slate-400 hover:text-slate-700"
+          aria-label="close"
+          onclick={() => (sessionsOpen = false)}>×</button
+        >
+      </div>
+      <p class="mb-3 text-xs leading-relaxed text-slate-500">
+        Only sketches whose <code class="rounded bg-slate-100 px-1">?session=</code>
+        token is in this list are accepted. This is the complete active set (a wholesale
+        replace, not a delta); saving takes effect immediately for new submissions.
+      </p>
+
+      {#if sessionsLoading}
+        <div class="py-6 text-center text-sm text-slate-400">loading…</div>
+      {:else}
+        <div class="mb-3 flex min-h-9 flex-wrap gap-2 rounded border border-slate-200 bg-slate-50 p-2">
+          {#each sessions as t (t)}
+            <span
+              class="inline-flex items-center gap-1 rounded-full bg-sky-100 py-0.5 pl-2.5 pr-1 text-xs font-semibold text-sky-800"
+            >
+              {t}
+              <button
+                class="flex h-4 w-4 items-center justify-center rounded-full text-sky-500 hover:bg-sky-200 hover:text-sky-900"
+                aria-label={`remove ${t}`}
+                onclick={() => removeSession(t)}>×</button
+              >
+            </span>
+          {:else}
+            <span class="text-xs text-slate-400">
+              No active sessions — no submissions will be accepted.
+            </span>
+          {/each}
+        </div>
+
+        <form
+          class="flex gap-2"
+          onsubmit={(e) => {
+            e.preventDefault();
+            addSession();
+          }}
+        >
+          <input
+            class="flex-1 rounded border border-slate-300 px-2 py-1 text-sm"
+            placeholder="add a session token, e.g. room-1"
+            bind:value={newSession}
+          />
+          <button
+            type="submit"
+            class="rounded border border-slate-300 px-3 py-1 text-sm font-semibold text-slate-700 hover:bg-slate-100"
+          >
+            Add
+          </button>
+        </form>
+      {/if}
+
+      {#if sessionsError}
+        <div class="mt-2 text-xs text-rose-600">{sessionsError}</div>
+      {/if}
+
+      <div class="mt-4 flex items-center gap-2">
+        {#if sessionsSaved}
+          <span class="text-xs font-semibold text-emerald-600">Saved ✓</span>
+        {/if}
+        <button
+          class="ml-auto rounded border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-100"
+          onclick={loadSessions}
+          disabled={sessionsLoading || sessionsSaving}
+        >
+          Reload
+        </button>
+        <button
+          class="rounded bg-emerald-600 px-4 py-1.5 text-sm font-extrabold text-white hover:bg-emerald-700 disabled:opacity-50"
+          onclick={saveSessions}
+          disabled={sessionsLoading || sessionsSaving}
+        >
+          {sessionsSaving ? "Saving…" : "Save"}
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
