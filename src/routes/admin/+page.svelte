@@ -236,6 +236,66 @@
       sessionsSaving = false;
     }
   }
+
+  // ── Test-draw jobs ───────────────────────────────────────────────────────────
+  // Push a canned calibration shape straight to the drawing queue (or pin it to a
+  // named robot), bypassing the sketch→combine→vectorize pipeline — handy for
+  // confirming a freshly-online bot can render a vectorization.
+  type TestShape = "line" | "square" | "triangle" | "sine_wave";
+  const TEST_SHAPES: { value: TestShape; label: string }[] = [
+    { value: "line", label: "Line" },
+    { value: "square", label: "Square" },
+    { value: "triangle", label: "Triangle" },
+    { value: "sine_wave", label: "Sine wave" },
+  ];
+
+  let testDrawOpen = $state(false);
+  let testShape = $state<TestShape>("line");
+  let testRobot = $state(""); // blank → unpinned (normal placement search)
+  let testSubmitting = $state(false);
+  let testError = $state<string | null>(null);
+  let testResult = $state<{
+    job_id: string;
+    shape: TestShape;
+    robot: string | null;
+  } | null>(null);
+
+  function openTestDraw() {
+    testDrawOpen = true;
+    testError = null;
+    testResult = null;
+  }
+
+  async function submitTestDraw() {
+    testSubmitting = true;
+    testError = null;
+    testResult = null;
+    try {
+      const robot = testRobot.trim();
+      const res = await fetch(withToken("/admin/test-draw"), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        // Omit `robot` entirely when blank so the server takes the unpinned path.
+        body: JSON.stringify(robot ? { shape: testShape, robot } : { shape: testShape }),
+      });
+      if (!res.ok) {
+        // 409 = pinned robot isn't ready; surface the server's detail message.
+        let detail = `HTTP ${res.status}`;
+        try {
+          const body = await res.json();
+          if (body?.detail) detail = String(body.detail);
+        } catch {
+          /* non-JSON error body */
+        }
+        throw new Error(detail);
+      }
+      testResult = await res.json();
+    } catch (err) {
+      testError = String(err instanceof Error ? err.message : err);
+    } finally {
+      testSubmitting = false;
+    }
+  }
 </script>
 
 <svelte:head>
@@ -264,6 +324,12 @@
     </span>
     <button
       class="ml-auto rounded border border-slate-300 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100"
+      onclick={openTestDraw}
+    >
+      Test draw
+    </button>
+    <button
+      class="rounded border border-slate-300 bg-slate-50 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100"
       onclick={openSessions}
     >
       Active sessions
@@ -680,6 +746,90 @@
           disabled={sessionsLoading || sessionsSaving}
         >
           {sessionsSaving ? "Saving…" : "Save"}
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- ── Test-draw modal ───────────────────────────────────────────────────────── -->
+{#if testDrawOpen}
+  <div class="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+    <div class="flex w-full max-w-md flex-col rounded-lg bg-white p-4 shadow-xl">
+      <div class="mb-2 flex items-center justify-between">
+        <h3 class="text-base font-bold text-slate-900">Publish test drawing</h3>
+        <button
+          class="rounded px-2 text-lg leading-none text-slate-400 hover:text-slate-700"
+          aria-label="close"
+          onclick={() => (testDrawOpen = false)}>×</button
+        >
+      </div>
+      <p class="mb-3 text-xs leading-relaxed text-slate-500">
+        Sends a canned calibration shape straight to the drawing queue, bypassing
+        the sketch pipeline — for checking a newly-online bot can render. Leave the
+        robot blank to let the normal placement search pick any ready bot.
+      </p>
+
+      <div class="mb-3">
+        <div class="mb-1 text-xs font-semibold text-slate-600">Shape</div>
+        <div class="flex flex-wrap gap-2">
+          {#each TEST_SHAPES as s (s.value)}
+            <button
+              class="rounded border px-3 py-1 text-sm font-semibold"
+              class:border-sky-500={testShape === s.value}
+              class:bg-sky-50={testShape === s.value}
+              class:text-sky-800={testShape === s.value}
+              class:border-slate-300={testShape !== s.value}
+              class:text-slate-600={testShape !== s.value}
+              onclick={() => (testShape = s.value)}
+            >
+              {s.label}
+            </button>
+          {/each}
+        </div>
+      </div>
+
+      <label class="mb-1 block text-xs font-semibold text-slate-600" for="test-robot">
+        Robot <span class="font-normal text-slate-400">(optional — pin to one bot)</span>
+      </label>
+      <input
+        id="test-robot"
+        class="w-full rounded border border-slate-300 px-2 py-1 text-sm"
+        placeholder="leave blank for any ready bot"
+        bind:value={testRobot}
+      />
+
+      {#if testError}
+        <div class="mt-3 rounded bg-rose-50 px-2 py-1.5 text-xs text-rose-700">
+          {testError}
+        </div>
+      {/if}
+
+      {#if testResult}
+        <div class="mt-3 rounded bg-emerald-50 px-2 py-1.5 text-xs text-emerald-800">
+          Queued <span class="font-bold">{testResult.shape}</span> — job
+          <span class="font-mono">{testResult.job_id}</span>.
+          {#if testResult.robot}
+            Drawing on <span class="font-bold">{testResult.robot}</span>.
+          {:else}
+            Waiting for the next fitting ready bot.
+          {/if}
+        </div>
+      {/if}
+
+      <div class="mt-4 flex items-center gap-2">
+        <button
+          class="ml-auto rounded border border-slate-300 px-3 py-1.5 text-sm font-semibold text-slate-600 hover:bg-slate-100"
+          onclick={() => (testDrawOpen = false)}
+        >
+          Close
+        </button>
+        <button
+          class="rounded bg-emerald-600 px-4 py-1.5 text-sm font-extrabold text-white hover:bg-emerald-700 disabled:opacity-50"
+          onclick={submitTestDraw}
+          disabled={testSubmitting}
+        >
+          {testSubmitting ? "Publishing…" : "Publish"}
         </button>
       </div>
     </div>

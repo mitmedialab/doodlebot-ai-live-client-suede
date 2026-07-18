@@ -3,6 +3,7 @@
 
   type SSEPayload = {
     sketch: string;
+    session: string;
     status?: "approved" | "innapropriate" | "complex";
     companions?: string[];
     vectorization?: string;
@@ -171,57 +172,57 @@
          likely wrong-link situation instead of showing the sketch pad. -->
     <MissingSession />
   {:else}
-  <!-- Dot colors picked to sit on the pastel section washes: a deep indigo-plum
+    <!-- Dot colors picked to sit on the pastel section washes: a deep indigo-plum
        active dot (echoing the section labels) over a soft lavender inactive. -->
-  <Pagination
-    model={pages}
-    {empty}
-    {backdrop}
-    --active-dot="#4a3f6b"
-    --inactive-dot="#b7a9cf"
-  />
-  <OpenSketchPad
-    bind:this={opener}
-    onsend={async (dataUrl) => {
-      // Show the sketch immediately using the local data URL (eager loading);
-      // the server round-trip below reconciles it with its sketch id.
-      const model = new PipelineModel(dataUrl);
-      pages.items.splice(0, 0, model);
-      pages.index = 0;
-      opener?.close();
+    <Pagination
+      model={pages}
+      {empty}
+      {backdrop}
+      --active-dot="#4a3f6b"
+      --inactive-dot="#b7a9cf"
+    />
+    <OpenSketchPad
+      bind:this={opener}
+      onsend={async (dataUrl) => {
+        // Show the sketch immediately using the local data URL (eager loading);
+        // the server round-trip below reconciles it with its sketch id.
+        const model = new PipelineModel(dataUrl);
+        pages.items.splice(0, 0, model);
+        pages.index = 0;
+        opener?.close();
 
-      const client = await clientId;
-      if (!client) return;
+        const client = await clientId;
+        if (!client) return;
 
-      const response = await fetch(`${server}/sketch`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ client, session, sketch: dataUrl }),
-      });
-      // Always 200. `status: "inactive session"` is the ONLY verdict returned
-      // synchronously here (the three moderation verdicts arrive later via SSE);
-      // it means the session token isn't active, so no pipeline exists and no SSE
-      // events will come — reject the card now and don't track it.
-      const { sketch, status } = (await response.json()) as {
-        sketch: string;
-        status?: "inactive session" | null;
-      };
+        const response = await fetch(`${server}/sketch`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ client, session, sketch: dataUrl }),
+        });
+        // Always 200. `status: "inactive session"` is the ONLY verdict returned
+        // synchronously here (the three moderation verdicts arrive later via SSE);
+        // it means the session token isn't active, so no pipeline exists and no SSE
+        // events will come — reject the card now and don't track it.
+        const { sketch, status } = (await response.json()) as {
+          sketch: string;
+          status?: "inactive session" | null;
+        };
 
-      if (status === "inactive session") {
-        model.rejectInactiveSession();
-        return;
-      }
+        if (status === "inactive session") {
+          model.rejectInactiveSession();
+          return;
+        }
 
-      const existing = pipelineByHash.get(sketch);
-      if (existing && existing !== model) {
-        // The SSE creation event beat this response and already built a model;
-        // drop our eager duplicate and keep the stream-owned one.
-        // TODO: Consider more sophisticated solution, to ensure no jank for user.
-        const index = pages.items.indexOf(model);
-        if (index >= 0) pages.items.splice(index, 1);
-      } else pipelineByHash.set(sketch, model);
-    }}
-  />
+        const existing = pipelineByHash.get(sketch);
+        if (existing && existing !== model) {
+          // The SSE creation event beat this response and already built a model;
+          // drop our eager duplicate and keep the stream-owned one.
+          // TODO: Consider more sophisticated solution, to ensure no jank for user.
+          const index = pages.items.indexOf(model);
+          if (index >= 0) pages.items.splice(index, 1);
+        } else pipelineByHash.set(sketch, model);
+      }}
+    />
   {/if}
 </div>
 

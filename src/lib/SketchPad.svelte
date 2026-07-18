@@ -22,7 +22,9 @@
     color = "#1a1a18",
     background = "#ffffff",
     size = 6,
-    duration = 15,
+    duration = parseFloat(
+      new URLSearchParams(window.location.search).get("timer") ?? "15",
+    ),
     onsend,
   }: Props = $props();
 
