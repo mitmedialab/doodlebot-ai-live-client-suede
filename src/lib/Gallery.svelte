@@ -148,11 +148,18 @@
   style:--gap={`${GAP}px`}
   style:--pad={`${PAD}px`}
   style:--doodle-w={`${doodleWidth}px`}
+  style:--bg={`#${new URLSearchParams(window.location.search).get("bg") ?? "f0edfd"}`}
+  style:--ink={`#${new URLSearchParams(window.location.search).get("ink") ?? "46506b"}`}
 >
   <!-- ~3/4: the sketches, three squares to a row -->
   <section class="col sketches">
     <h2 class="title">Sketches</h2>
-    <Marquee gap={GAP}>
+    <Marquee
+      gap={GAP}
+      speed={parseFloat(
+        new URLSearchParams(window.location.search).get("speed") ?? "22",
+      )}
+    >
       {#if model.sketches.length}
         <div class="sketch-grid" in:fade>
           {#each model.sketches as entry (entry.id)}
@@ -172,7 +179,12 @@
   <!-- ~1/4: the doodles, one per row, each aligned to a sketch row -->
   <section class="col doodles">
     <h2 class="title">Doodles</h2>
-    <Marquee gap={GAP}>
+    <Marquee
+      gap={GAP}
+      speed={parseFloat(
+        new URLSearchParams(window.location.search).get("speed") ?? "22",
+      )}
+    >
       {#if model.doodles.length}
         <div class="doodle-stack" in:fade>
           {#each model.doodles as entry (entry.id)}
@@ -219,13 +231,12 @@
     display: flex;
     width: 100%;
     height: 100%;
-    background: #fbfaff;
+    background: var(--bg);
     font-family:
       "Nunito",
       system-ui,
       -apple-system,
       sans-serif;
-    --ink: #46506b;
   }
 
   .col {
