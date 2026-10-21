@@ -1,0 +1,24 @@
+{
+  "features": {
+    "ghcr.io/devcontainers/features/node:latest": {
+      "version": "2.1.1",
+      "resolved": "ghcr.io/devcontainers/features/node@sha256:2a19d3b0b3879437637cfd292eb29fee0afcfbe6364e33db9afc4f80c5c1f956",
+      "integrity": "sha256:2a19d3b0b3879437637cfd292eb29fee0afcfbe6364e33db9afc4f80c5c1f956"
+    },
+    "ghcr.io/devcontainers/features/python:latest": {
+      "version": "1.8.0",
+      "resolved": "ghcr.io/devcontainers/features/python@sha256:fbcad6955caeecc5ad3f7886baf652e25cba5225a6c4c2287c536de2e5607511",
+      "integrity": "sha256:fbcad6955caeecc5ad3f7886baf652e25cba5225a6c4c2287c536de2e5607511"
+    },
+    "ghcr.io/guiyomh/features/vim:0": {
+      "version": "0.0.1",
+      "resolved": "ghcr.io/guiyomh/features/vim@sha256:53c64a458fe88f40862ad5f94ea3f8d7fdf46c3fb42bdaa8a6a09f7d44f182f7",
+      "integrity": "sha256:53c64a458fe88f40862ad5f94ea3f8d7fdf46c3fb42bdaa8a6a09f7d44f182f7"
+    },
+    "ghcr.io/pmalacho-mit/devcontainer-features/git-subrepo:latest": {
+      "version": "1.0.1",
+      "resolved": "ghcr.io/pmalacho-mit/devcontainer-features/git-subrepo@sha256:83279871da9922f57be228af1c316cc47367c85cb2087d3ff233a2dbdc738719",
+      "integrity": "sha256:83279871da9922f57be228af1c316cc47367c85cb2087d3ff233a2dbdc738719"
+    }
+  }
+}

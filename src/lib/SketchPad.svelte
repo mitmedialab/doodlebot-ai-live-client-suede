@@ -10,7 +10,7 @@
     size?: number;
     /** Seconds the user gets to draw before being prompted to submit. */
     duration?: number;
-    /** Called with a PNG data URL when the user hits "Send". */
+    /** Called with a PNG data URL when the user submits their sketch. */
     onsend?: (dataUrl: string) => void | Promise<void>;
   };
 </script>
@@ -23,7 +23,7 @@
     background = "#ffffff",
     size = 6,
     duration = parseFloat(
-      new URLSearchParams(window.location.search).get("timer") ?? "15",
+      new URLSearchParams(window.location.search).get("timer") ?? "10",
     ),
     onsend,
   }: Props = $props();
@@ -47,15 +47,21 @@
   let remaining = $state(duration);
   let expired = $state(false);
   // Set when the user tries to submit a canvas that's essentially blank — swaps
-  // the expiry prompt for an "empty drawing" nudge.
+  // the expiry prompt for an "empty drawing" nudge. Can also be raised before
+  // expiry by an early submit, in which case the timer is paused behind it.
   let emptyWarning = $state(false);
   let timer: ReturnType<typeof setInterval> | undefined;
 
   function startTimer() {
-    clearInterval(timer);
     remaining = duration;
     expired = false;
     emptyWarning = false;
+    resumeTimer();
+  }
+
+  // (Re)start ticking from the current `remaining` without resetting it.
+  function resumeTimer() {
+    clearInterval(timer);
     timer = setInterval(() => {
       remaining -= 1;
       if (remaining <= 0) {
@@ -249,10 +255,28 @@
     return inkedPixelCount() < threshold;
   }
 
-  // Only reachable from the "time's up" prompt, which is shown only when the
-  // canvas isn't empty (emptiness is decided at expiry — see startTimer).
+  // Reachable from the "time's up" prompt (shown only when the canvas isn't
+  // empty — emptiness is decided at expiry, see resumeTimer) or via submitEarly.
   function submit() {
+    clearInterval(timer);
     onsend?.(toDataURL());
+  }
+
+  // The bottom-bar Submit button, for users who finish before the clock runs
+  // out. A blank canvas pauses the timer behind the "looks empty" nudge instead.
+  function submitEarly() {
+    if (isEmptyDrawing()) {
+      clearInterval(timer);
+      emptyWarning = true;
+      return;
+    }
+    submit();
+  }
+
+  // Dismiss the early-submit "looks empty" nudge and pick the timer back up.
+  function keepDrawing() {
+    emptyWarning = false;
+    resumeTimer();
   }
 
   // Discard the current drawing and hand the user a fresh canvas + timer.
@@ -326,12 +350,22 @@
       style:background
     ></canvas>
 
-    {#if expired}
-      <!-- When the clock runs out, drawing is locked behind this prompt: the
-           overlay covers the canvas so strokes can't land while it's up. -->
+    {#if expired || emptyWarning}
+      <!-- When the clock runs out (or an early submit is blank), drawing is
+           locked behind this prompt: the overlay covers the canvas so strokes
+           can't land while it's up. -->
       <div class="overlay" transition:fade={{ duration: 160 }}>
         <div class="prompt" transition:scale={{ duration: 200, start: 0.85 }}>
-          {#if emptyWarning}
+          {#if emptyWarning && !expired}
+            <h2>Looks empty!</h2>
+            <p>The canvas is too empty to submit. Draw a bit more first.</p>
+            <div class="prompt-actions">
+              <button class="prompt-btn keep" onclick={keepDrawing}>
+                {@render pencil()}
+                <span>Keep drawing</span>
+              </button>
+            </div>
+          {:else if emptyWarning}
             <h2>Looks empty!</h2>
             <p>
               The canvas was too empty to submit. Trash it and give it another
@@ -364,9 +398,17 @@
 
   <div class="bottom">
     <p class="hint">
-      You have <strong>{duration} seconds</strong> to sketch — you'll be prompted
-      to submit when the timer runs out.
+      You have <strong>{duration} seconds</strong> to sketch — submit when you're
+      done, or you'll be prompted when the timer runs out.
     </p>
+    <button
+      class="prompt-btn submit send"
+      onclick={submitEarly}
+      disabled={expired || emptyWarning}
+    >
+      {@render paperAirplane()}
+      <span>Submit</span>
+    </button>
   </div>
 </div>
 
@@ -518,19 +560,22 @@
     cursor: crosshair;
   }
 
-  /* bottom bar pinned at bottom — now an informational note instead of a
-     Submit button (submit is prompted when the timer expires). */
+  /* bottom bar pinned at bottom — an informational note plus an early Submit
+     button (submit is also prompted when the timer expires). */
   .bottom {
     flex-shrink: 0;
     display: flex;
+    align-items: center;
     justify-content: center;
+    gap: 0.75rem;
+    padding: 0.5rem 0.75rem;
     background: #fff;
     border-top: 1px solid var(--line);
   }
   .hint {
+    flex: 1;
     margin: 0;
-    padding: 0.7rem 1rem;
-    text-align: center;
+    text-align: left;
     font-size: 0.82rem;
     font-weight: 600;
     line-height: 1.35;
@@ -681,6 +726,25 @@
   }
   .prompt-btn.submit:active {
     background: #45a049;
+  }
+  .prompt-btn.keep {
+    background: var(--accent);
+    color: #fff;
+  }
+  @media (hover: hover) {
+    .prompt-btn.keep:hover {
+      background: #7449c9;
+    }
+  }
+  /* the bottom-bar Submit sizes to its content rather than sharing a row */
+  .prompt-btn.send {
+    flex: 0 0 auto;
+    padding: 0.65rem 1.1rem;
+  }
+  .prompt-btn.send:disabled {
+    opacity: 0.5;
+    cursor: default;
+    pointer-events: none;
   }
 
   /* Landscape: the panel is wide and short, so a top toolbar squashes the
